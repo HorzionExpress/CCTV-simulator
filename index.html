@@ -1,0 +1,4141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCTV 监控控制台 · 巡逻系统</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: #04060a;
+    color: #cfe3dd;
+    font-family: "SF Mono", "Consolas", "Menlo", "Courier New", monospace;
+    overflow: hidden;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .app {
+    width: 100vw; height: 100vh;
+    display: flex; flex-direction: column;
+    gap: 6px; padding: 8px 12px 6px;
+    background: radial-gradient(ellipse at 50% -10%, #16202a 0%, #080c11 55%, #04060a 100%);
+  }
+
+  .topbar {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px 6px; border-bottom: 1px solid #16202a;
+    font-size: clamp(10px, 0.82vw, 13px); letter-spacing: 0.16em;
+  }
+
+  .brand {
+    display: flex; align-items: center; gap: 8px;
+    color: #4ee6a8; text-shadow: 0 0 12px rgba(78, 230, 168, 0.45);
+  }
+
+  .brand .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #4ee6a8; box-shadow: 0 0 10px #4ee6a8;
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.28; transform: scale(0.82); }
+  }
+
+  .brand .ver { color: #33534b; letter-spacing: 0.1em; }
+
+  .clock {
+    color: #7fd8bb; text-shadow: 0 0 10px rgba(78, 230, 168, 0.35);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .grid {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .cell {
+    min-width: 0; min-height: 0;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  .screen {
+    position: relative; flex: 1 1 auto; min-height: 0;
+    background: #000; border: 2px solid #1b2229;
+    border-radius: 5px; overflow: hidden; cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .screen:hover { border-color: #33424e; }
+
+  .screen.active {
+    border-color: #4ee6a8;
+    box-shadow:
+      0 0 0 1px rgba(78, 230, 168, 0.55),
+      0 0 26px rgba(78, 230, 168, 0.35),
+      inset 0 0 30px rgba(78, 230, 168, 0.07);
+  }
+
+  .screen.robot-view {
+    border-color: #ffb347;
+    box-shadow:
+      0 0 0 1px rgba(255, 179, 71, 0.65),
+      0 0 30px rgba(255, 179, 71, 0.45),
+      inset 0 0 30px rgba(255, 179, 71, 0.08);
+  }
+
+  .screen.drone-view {
+    border-color: #6cd0ff;
+    box-shadow:
+      0 0 0 1px rgba(108, 208, 255, 0.65),
+      0 0 30px rgba(108, 208, 255, 0.45),
+      inset 0 0 30px rgba(108, 208, 255, 0.08);
+  }
+
+  .screen canvas.feed {
+    display: block; position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  .console-canvas {
+    display: block; flex: 0 0 auto; width: 100%;
+    height: clamp(64px, 9.2vh, 116px);
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+  }
+
+  .cell.active .console-canvas {
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55))
+            drop-shadow(0 0 12px rgba(78, 230, 168, 0.35));
+  }
+
+  .osd {
+    position: absolute; pointer-events: none;
+    letter-spacing: 0.08em;
+    font-size: clamp(9px, 0.86vw, 14px);
+    color: #e6fff5;
+    text-shadow:
+      0 0 6px rgba(120, 255, 210, 0.5),
+      0 1px 3px rgba(0, 0, 0, 0.95);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .osd-tl { top: 5%; left: 3%; }
+
+  .osd-tr {
+    top: 5%; right: 3%;
+    display: flex; align-items: center; gap: 5px;
+    color: #ffb0b0;
+    text-shadow:
+      0 0 6px rgba(255, 100, 100, 0.6),
+      0 1px 3px rgba(0, 0, 0, 0.95);
+  }
+
+  .osd-bc {
+    bottom: 0; left: 0; right: 0;
+    display: flex; align-items: flex-end;
+    justify-content: space-between;
+    padding: 2.5% 3% 2.8%;
+    background: linear-gradient(
+      to top,
+      rgba(0,0,0,0.78) 0%,
+      rgba(0,0,0,0.42) 55%,
+      rgba(0,0,0,0) 100%
+    );
+  }
+
+  .recdot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #ff3b3b; box-shadow: 0 0 8px #ff3b3b;
+    animation: blink 1.4s steps(1) infinite;
+  }
+
+  @keyframes blink {
+    0%, 58%   { opacity: 1; }
+    59%, 100% { opacity: 0.12; }
+  }
+
+  .hint {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(0.96);
+    padding: 6px 16px; border-radius: 22px;
+    background: rgba(0, 0, 0, 0.68);
+    border: 1px solid rgba(78, 230, 168, 0.55);
+    color: #96f5cc;
+    font-size: clamp(9px, 0.9vw, 13px);
+    letter-spacing: 0.14em; white-space: nowrap;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+
+  .screen.active .hint {
+    opacity: 1; transform: translate(-50%, -50%) scale(1);
+  }
+
+  .statusbar {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 6px 4px 2px;
+    border-top: 1px solid #131b22;
+    font-size: clamp(9px, 0.8vw, 12px);
+    letter-spacing: 0.08em; color: #4e6b63;
+  }
+
+  .statusbar b { color: #4ee6a8; font-weight: 600; }
+
+  .sys {
+    display: flex; align-items: center;
+    color: #365a50; white-space: nowrap;
+  }
+
+  .sys i {
+    display: inline-block; width: 6px; height: 6px;
+    margin-right: 6px; border-radius: 50%;
+    background: #4ee6a8; box-shadow: 0 0 9px #4ee6a8;
+    font-style: normal;
+  }
+
+  /* ============ 控制面板 ============ */
+  .robot-panel, .drone-panel {
+    position: fixed;
+    left: 14px;
+    z-index: 150;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    border-radius: 18px;
+    background: rgba(8, 12, 18, 0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: all 0.25s ease;
+  }
+
+  .robot-panel {
+    bottom: 52px;
+    border: 1px solid rgba(78, 230, 168, 0.4);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7),
+                0 0 20px rgba(78, 230, 168, 0.12);
+  }
+
+  .robot-panel.active {
+    border-color: #ffb347;
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.75),
+                0 0 32px rgba(255, 179, 71, 0.4);
+  }
+
+  .drone-panel {
+    bottom: 152px;
+    border: 1px solid rgba(108, 208, 255, 0.4);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7),
+                0 0 20px rgba(108, 208, 255, 0.12);
+  }
+
+  .drone-panel.active {
+    border-color: #6cd0ff;
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.75),
+                0 0 32px rgba(108, 208, 255, 0.45);
+  }
+
+  .rp-label, .dp-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-weight: 700;
+    padding: 4px 0;
+    transition: color 0.25s ease;
+  }
+
+  .rp-label { color: #4ee6a8; }
+  .dp-label { color: #6cd0ff; }
+
+  .robot-panel.active .rp-label { color: #ffb347; }
+  .drone-panel.active .dp-label { color: #6cd0ff; }
+
+  .rp-dpad, .dp-dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 34px);
+    grid-template-rows: repeat(2, 34px);
+    gap: 4px;
+  }
+
+  .rp-btn, .dp-btn {
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    user-select: none;
+    touch-action: none;
+    padding: 0;
+  }
+
+  .rp-btn {
+    border: 1px solid rgba(78, 230, 168, 0.3);
+    background: linear-gradient(180deg, #1a2530 0%, #0d1218 100%);
+    color: #8affc9;
+  }
+
+  .rp-btn:hover {
+    border-color: #4ee6a8;
+    background: linear-gradient(180deg, #223040 0%, #101820 100%);
+    color: #c9ffe9;
+  }
+
+  .rp-btn.pressed {
+    background: linear-gradient(180deg, #4ee6a8 0%, #2a8a60 100%);
+    color: #04060a;
+    border-color: #4ee6a8;
+    box-shadow: 0 0 14px rgba(78, 230, 168, 0.75);
+    transform: scale(0.94);
+  }
+
+  .dp-btn {
+    border: 1px solid rgba(108, 208, 255, 0.3);
+    background: linear-gradient(180deg, #14222e 0%, #0a1218 100%);
+    color: #a8dcff;
+  }
+
+  .dp-btn:hover {
+    border-color: #6cd0ff;
+    background: linear-gradient(180deg, #1a3040 0%, #0d1a24 100%);
+    color: #e0f4ff;
+  }
+
+  .dp-btn.pressed {
+    background: linear-gradient(180deg, #6cd0ff 0%, #2a7aa8 100%);
+    color: #04060a;
+    border-color: #6cd0ff;
+    box-shadow: 0 0 14px rgba(108, 208, 255, 0.8);
+    transform: scale(0.94);
+  }
+
+  .rp-select, .dp-select {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .rp-select {
+    border: 1px solid rgba(255, 179, 71, 0.5);
+    background: linear-gradient(180deg, #2a1f10 0%, #180f06 100%);
+    color: #ffcc80;
+  }
+
+  .rp-select:hover {
+    border-color: #ffb347; color: #fff0d8;
+    box-shadow: 0 0 16px rgba(255, 179, 71, 0.4);
+  }
+
+  .rp-select.on {
+    background: linear-gradient(180deg, #ffb347 0%, #c47a1a 100%);
+    color: #140a02; border-color: #ffb347;
+    box-shadow: 0 0 22px rgba(255, 179, 71, 0.7);
+  }
+
+  .dp-select {
+    border: 1px solid rgba(108, 208, 255, 0.5);
+    background: linear-gradient(180deg, #0f1e2a 0%, #06121a 100%);
+    color: #a8dcff;
+  }
+
+  .dp-select:hover {
+    border-color: #6cd0ff; color: #e8f8ff;
+    box-shadow: 0 0 16px rgba(108, 208, 255, 0.5);
+  }
+
+  .dp-select.on {
+    background: linear-gradient(180deg, #6cd0ff 0%, #2a7aa8 100%);
+    color: #04060a; border-color: #6cd0ff;
+    box-shadow: 0 0 22px rgba(108, 208, 255, 0.75);
+  }
+
+  /* ============ 状态条 ============ */
+  .robot-status, .drone-status {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%) translateY(-30px);
+    z-index: 150;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 20px;
+    border-radius: 26px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+  }
+
+  .robot-status {
+    top: 54px;
+    border: 1px solid rgba(255, 179, 71, 0.65);
+    background: rgba(20, 12, 6, 0.9);
+    color: #ffcc80;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7),
+                0 0 28px rgba(255, 179, 71, 0.35);
+  }
+
+  .drone-status {
+    top: 98px;
+    border: 1px solid rgba(108, 208, 255, 0.65);
+    background: rgba(6, 16, 22, 0.9);
+    color: #a8dcff;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7),
+                0 0 28px rgba(108, 208, 255, 0.4);
+  }
+
+  .robot-status.on, .drone-status.on {
+    display: flex;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .robot-status::before {
+    content: ""; width: 9px; height: 9px; border-radius: 3px;
+    background: #ffb347; box-shadow: 0 0 12px #ffb347;
+    animation: blink 1s steps(1) infinite;
+  }
+
+  .drone-status::before {
+    content: ""; width: 9px; height: 9px; border-radius: 50%;
+    background: #6cd0ff; box-shadow: 0 0 12px #6cd0ff;
+    animation: blink 1s steps(1) infinite;
+  }
+
+  /* ============ 第一人称面板 ============ */
+  .pov-panel {
+    position: fixed;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(0.92);
+    z-index: 180;
+    width: 78vw;
+    max-width: 1180px;
+    aspect-ratio: 16 / 9;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.95);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease,
+                transform 0.35s cubic-bezier(0.22, 0.86, 0.24, 1);
+  }
+
+  .pov-panel.on {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .robot-cam-panel {
+    border: 2px solid #ffb347;
+    box-shadow: 0 0 0 1px rgba(255, 179, 71, 0.4),
+                0 30px 90px rgba(0, 0, 0, 0.95),
+                0 0 90px rgba(255, 179, 71, 0.35);
+  }
+
+  .drone-cam-panel {
+    border: 2px solid #6cd0ff;
+    box-shadow: 0 0 0 1px rgba(108, 208, 255, 0.4),
+                0 30px 90px rgba(0, 0, 0, 0.95),
+                0 0 90px rgba(108, 208, 255, 0.35);
+  }
+
+  .pov-header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  .robot-cam-panel .pov-header {
+    background: linear-gradient(180deg, rgba(20, 12, 6, 0.9), rgba(20, 12, 6, 0));
+  }
+
+  .drone-cam-panel .pov-header {
+    background: linear-gradient(180deg, rgba(6, 16, 22, 0.9), rgba(6, 16, 22, 0));
+  }
+
+  .pov-title {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    font-weight: 700;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .robot-cam-panel .pov-title { color: #ffb347; text-shadow: 0 0 10px rgba(255, 179, 71, 0.6); }
+  .drone-cam-panel .pov-title { color: #6cd0ff; text-shadow: 0 0 10px rgba(108, 208, 255, 0.6); }
+
+  .pov-title::before {
+    content: ""; width: 8px; height: 8px; border-radius: 2px;
+    animation: blink 1s steps(1) infinite;
+  }
+
+  .robot-cam-panel .pov-title::before {
+    background: #ffb347; box-shadow: 0 0 10px #ffb347;
+  }
+
+  .drone-cam-panel .pov-title::before {
+    background: #6cd0ff; box-shadow: 0 0 10px #6cd0ff; border-radius: 50%;
+  }
+
+  .pov-controls {
+    display: flex; align-items: center; gap: 14px;
+    pointer-events: auto;
+  }
+
+  .pov-zoom {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .robot-cam-panel .pov-zoom { border: 1px solid rgba(255, 179, 71, 0.4); color: #ffcc80; }
+  .drone-cam-panel .pov-zoom { border: 1px solid rgba(108, 208, 255, 0.4); color: #a8dcff; }
+
+  .pov-zoom-label { font-size: 9px; letter-spacing: 0.15em; }
+  .robot-cam-panel .pov-zoom-label { color: #8a6a3a; }
+  .drone-cam-panel .pov-zoom-label { color: #3a6a8a; }
+
+  .pov-close {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    font-size: 14px; font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; line-height: 1;
+    font-family: inherit;
+  }
+
+  .robot-cam-panel .pov-close {
+    border: 1px solid rgba(255, 179, 71, 0.5); color: #ffb347;
+  }
+
+  .robot-cam-panel .pov-close:hover {
+    background: #ffb347; color: #140a02;
+    box-shadow: 0 0 16px rgba(255, 179, 71, 0.8);
+  }
+
+  .drone-cam-panel .pov-close {
+    border: 1px solid rgba(108, 208, 255, 0.5); color: #6cd0ff;
+  }
+
+  .drone-cam-panel .pov-close:hover {
+    background: #6cd0ff; color: #040a10;
+    box-shadow: 0 0 16px rgba(108, 208, 255, 0.8);
+  }
+
+  .pov-body {
+    position: relative; width: 100%; height: 100%;
+    overflow: hidden; background: #000;
+  }
+
+  .pov-body canvas {
+    display: block; position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  .pov-body .osd { font-size: 12px; }
+
+  .pov-crosshair {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px; height: 40px;
+    pointer-events: none;
+    opacity: 0.6;
+  }
+
+  .pov-crosshair::before,
+  .pov-crosshair::after {
+    content: "";
+    position: absolute;
+    background: #ffb347;
+    box-shadow: 0 0 6px #ffb347;
+  }
+
+  .drone-cam-panel .pov-crosshair::before,
+  .drone-cam-panel .pov-crosshair::after {
+    background: #6cd0ff;
+    box-shadow: 0 0 6px #6cd0ff;
+  }
+
+  .pov-crosshair::before {
+    left: 50%; top: 0;
+    width: 1.5px; height: 100%;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      to bottom,
+      transparent 0%, transparent 35%,
+      #ffb347 35%, #ffb347 65%,
+      transparent 65%, transparent 100%
+    );
+  }
+
+  .drone-cam-panel .pov-crosshair::before {
+    background: linear-gradient(
+      to bottom,
+      transparent 0%, transparent 35%,
+      #6cd0ff 35%, #6cd0ff 65%,
+      transparent 65%, transparent 100%
+    );
+  }
+
+  .pov-crosshair::after {
+    top: 50%; left: 0;
+    height: 1.5px; width: 100%;
+    transform: translateY(-50%);
+    background: linear-gradient(
+      to right,
+      transparent 0%, transparent 35%,
+      #ffb347 35%, #ffb347 65%,
+      transparent 65%, transparent 100%
+    );
+  }
+
+  .drone-cam-panel .pov-crosshair::after {
+    background: linear-gradient(
+      to right,
+      transparent 0%, transparent 35%,
+      #6cd0ff 35%, #6cd0ff 65%,
+      transparent 65%, transparent 100%
+    );
+  }
+
+  .pov-crosshair-center {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .robot-cam-panel .pov-crosshair-center {
+    background: #ffb347; box-shadow: 0 0 8px #ffb347;
+  }
+
+  .drone-cam-panel .pov-crosshair-center {
+    background: #6cd0ff; box-shadow: 0 0 8px #6cd0ff;
+  }
+
+  .pov-altitude {
+    position: absolute;
+    left: 16px; bottom: 52px;
+    z-index: 5;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(108, 208, 255, 0.35);
+    color: #a8dcff;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+
+  /* ============ 截图按钮 ============ */
+  .capture-btn {
+    position: fixed; right: 20px; bottom: 52px; z-index: 150;
+    display: flex; align-items: center; gap: 9px;
+    padding: 11px 22px; border-radius: 28px;
+    border: 1px solid rgba(78, 230, 168, 0.55);
+    background: rgba(6, 14, 18, 0.86);
+    color: #7ff0c4;
+    font-family: inherit; font-size: 12px;
+    font-weight: 600; letter-spacing: 0.16em;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.65),
+                0 0 20px rgba(78, 230, 168, 0.16);
+    transition: all 0.2s ease;
+  }
+
+  .capture-btn::before {
+    content: ""; width: 9px; height: 9px;
+    border-radius: 50%; background: #4ee6a8;
+    box-shadow: 0 0 10px #4ee6a8;
+  }
+
+  .capture-btn:hover {
+    border-color: #4ee6a8; color: #c9ffe9;
+    box-shadow: 0 6px 26px rgba(0, 0, 0, 0.75),
+                0 0 32px rgba(78, 230, 168, 0.5);
+    transform: translateY(-2px);
+  }
+
+  .capture-btn:hover::before { background: #ffffff; box-shadow: 0 0 16px #ffffff; }
+  .capture-btn:active { transform: translateY(0) scale(0.97); }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(3, 6, 9, 0.9);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.34s ease 0.5s;
+  }
+
+  .overlay.open {
+    opacity: 1; pointer-events: auto;
+    transition: opacity 0.22s ease 0s;
+  }
+
+  .stage {
+    position: fixed;
+    background: #000;
+    border: 2px solid #4ee6a8;
+    border-radius: 6px; overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(78, 230, 168, 0.28),
+      0 40px 130px rgba(0, 0, 0, 0.92),
+      0 0 90px rgba(78, 230, 168, 0.16);
+  }
+
+  .stage.animating {
+    transition:
+      left 0.72s cubic-bezier(0.22, 0.86, 0.24, 1),
+      top 0.72s cubic-bezier(0.22, 0.86, 0.24, 1),
+      width 0.72s cubic-bezier(0.22, 0.86, 0.24, 1),
+      height 0.72s cubic-bezier(0.22, 0.86, 0.24, 1);
+  }
+
+  .stage canvas { display: block; width: 100%; height: 100%; }
+  .stage .osd { font-size: clamp(11px, 1.05vw, 19px); }
+
+  .zoombadge {
+    position: absolute; right: 3%; top: 15%;
+    padding: 5px 12px; border-radius: 4px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(78, 230, 168, 0.4);
+    color: #7ff0c4;
+    font-size: clamp(10px, 0.95vw, 15px);
+    letter-spacing: 0.12em;
+    pointer-events: none;
+  }
+
+  .flash {
+    position: fixed; inset: 0; z-index: 900;
+    background: #ffffff; opacity: 0; pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+
+  .flash.on { opacity: 0.8; transition: none; }
+
+  @media (max-width: 1100px) {
+    .grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+      overflow-y: auto;
+    }
+    .pov-panel { width: 88vw; }
+  }
+
+  @media (max-width: 640px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
+      grid-auto-rows: minmax(180px, auto);
+    }
+    .tips { display: none; }
+    .capture-btn {
+      right: 10px; bottom: 44px;
+      padding: 8px 14px; font-size: 11px;
+    }
+    .robot-panel {
+      left: 8px; bottom: 44px;
+      padding: 6px 10px; gap: 8px;
+    }
+    .drone-panel {
+      left: 8px; bottom: 134px;
+      padding: 6px 10px; gap: 8px;
+    }
+    .rp-dpad, .dp-dpad {
+      grid-template-columns: repeat(3, 28px);
+      grid-template-rows: repeat(2, 28px);
+    }
+    .rp-btn, .dp-btn { width: 28px; height: 28px; font-size: 11px; }
+    .pov-panel { width: 94vw; border-radius: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      CCTV OBSERVATION CONSOLE
+      <span class="ver">v6.1 · 巡逻系统</span>
+    </div>
+    <div class="clock" id="clock">----/--/-- --:--:--</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="statusbar">
+    <span class="tips">
+      <b>点击画面</b> 接管摄像头 · <b>WASD</b> 旋转 · <b>滚轮</b> 变焦 · <b>ESC</b> 退出
+    </span>
+    <span class="sys"><i></i>SYSTEM ONLINE</span>
+  </div>
+</div>
+
+<!-- 巡逻机器人面板 -->
+<div class="robot-panel" id="robotPanel">
+  <div class="rp-label">ROBOT</div>
+  <div class="rp-dpad">
+    <button class="rp-btn" data-key="w" style="grid-column: 2;">W</button>
+    <button class="rp-btn" data-key="a">A</button>
+    <button class="rp-btn" data-key="s">S</button>
+    <button class="rp-btn" data-key="d">D</button>
+  </div>
+  <div class="rp-dpad">
+    <button class="rp-btn" data-key="arrowUp" style="grid-column: 2;">↑</button>
+    <button class="rp-btn" data-key="arrowLeft">←</button>
+    <button class="rp-btn" data-key="arrowDown">↓</button>
+    <button class="rp-btn" data-key="arrowRight">→</button>
+  </div>
+  <button class="rp-select" id="robotSelectBtn" type="button">选择机器人</button>
+</div>
+
+<!-- 巡逻无人机面板 -->
+<div class="drone-panel" id="dronePanel">
+  <div class="dp-label">DRONE</div>
+  <div class="dp-dpad">
+    <button class="dp-btn" data-key="w" style="grid-column: 2;">W</button>
+    <button class="dp-btn" data-key="a">A</button>
+    <button class="dp-btn" data-key="s">S</button>
+    <button class="dp-btn" data-key="d">D</button>
+  </div>
+  <div class="dp-dpad">
+    <button class="dp-btn" data-key="arrowUp" style="grid-column: 2;">↑</button>
+    <button class="dp-btn" data-key="arrowLeft">←</button>
+    <button class="dp-btn" data-key="arrowDown">↓</button>
+    <button class="dp-btn" data-key="arrowRight">→</button>
+  </div>
+  <button class="dp-select" id="droneSelectBtn" type="button">选择无人机</button>
+</div>
+
+<div class="robot-status" id="robotStatus">
+  机器人已接管 · W/S 前后 · A/D 转向 · 方向键 云台
+</div>
+
+<div class="drone-status" id="droneStatus">
+  无人机已接管 · W/S 前后 · A/D 转向 · Space 上升 · Shift 下降
+</div>
+
+<!-- 机器人 POV -->
+<div class="pov-panel robot-cam-panel" id="robotCamPanel">
+  <div class="pov-body">
+    <canvas id="robotCamCanvas"></canvas>
+    <div class="osd osd-tl">ROBOT CAM</div>
+    <div class="osd osd-tr"><span class="recdot"></span>LIVE</div>
+    <div class="osd osd-bc">
+      <span id="robotCamInfo">巡逻机器人 · 第一人称</span>
+      <span id="robotCamClock">----/--/-- --:--:--</span>
+    </div>
+    <div class="pov-crosshair"><div class="pov-crosshair-center"></div></div>
+  </div>
+  <div class="pov-header">
+    <div class="pov-title">ROBOT POV</div>
+    <div class="pov-controls">
+      <div class="pov-zoom">
+        <span class="pov-zoom-label">ZOOM</span>
+        <span id="robotZoomValue">×1.0</span>
+      </div>
+      <button class="pov-close" id="robotCamClose" title="退出">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- 无人机 POV -->
+<div class="pov-panel drone-cam-panel" id="droneCamPanel">
+  <div class="pov-body">
+    <canvas id="droneCamCanvas"></canvas>
+    <div class="osd osd-tl">DRONE CAM</div>
+    <div class="osd osd-tr"><span class="recdot"></span>LIVE</div>
+    <div class="osd osd-bc">
+      <span id="droneCamInfo">巡逻无人机 · 空中视角</span>
+      <span id="droneCamClock">----/--/-- --:--:--</span>
+    </div>
+    <div class="pov-crosshair"><div class="pov-crosshair-center"></div></div>
+    <div class="pov-altitude">ALT <span id="droneAltitudeVal">3.5</span>m</div>
+  </div>
+  <div class="pov-header">
+    <div class="pov-title">DRONE POV</div>
+    <div class="pov-controls">
+      <div class="pov-zoom">
+        <span class="pov-zoom-label">ZOOM</span>
+        <span id="droneZoomValue">×1.0</span>
+      </div>
+      <button class="pov-close" id="droneCamClose" title="退出">✕</button>
+    </div>
+  </div>
+</div>
+
+<button class="capture-btn" id="captureBtn" type="button">截图 CAPTURE</button>
+
+<div class="overlay" id="overlay">
+  <div class="stage" id="stage">
+    <canvas id="bigCanvas"></canvas>
+    <div class="osd osd-tl" id="bigTitle">CAM 01</div>
+    <div class="osd osd-tr"><span class="recdot"></span>REC</div>
+    <div class="osd osd-bc">
+      <span id="bigName">CAM 01 · 中庭西侧</span>
+      <span id="bigClock">----/--/-- --:--:--</span>
+    </div>
+    <div class="zoombadge" id="zoomBadge">ZOOM ×1.0</div>
+  </div>
+</div>
+
+<div class="flash" id="flash"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+"use strict";
+
+import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+/* =========================================================
+   0. 工具函数
+   ========================================================= */
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const pad2 = n => String(n).padStart(2, "0");
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function currentDateString() {
+  const d = new Date();
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+}
+function currentTimeString() {
+  const d = new Date();
+  return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+}
+function currentStamp() {
+  return currentDateString() + "  " + currentTimeString();
+}
+function hashRand(seed, salt) {
+  const x = Math.sin(seed * 127.1 + salt * 311.7) * 43758.5453123;
+  return x - Math.floor(x);
+}
+
+/* =========================================================
+   1. 世界常量
+   ========================================================= */
+const DELAY_MS = 500;
+const ZOOM_MIN = 0.5, ZOOM_MAX = 5.0;
+const ROBOT_ZOOM_MIN = 0.8, ROBOT_ZOOM_MAX = 3.0;
+const DRONE_ZOOM_MIN = 0.8, DRONE_ZOOM_MAX = 4.0;
+const BASE_FOV = 52;
+const ROBOT_BASE_FOV = 78;
+const DRONE_BASE_FOV = 82;
+const RENDER_DPR = Math.min(window.devicePixelRatio || 1, 1.35);
+
+const MALL = { x0: -22, x1: 22, z0: -17, z1: 17 };
+const ATRIUM = { x0: -15, x1: 15, z0: -10, z1: 10 };
+const FLOOR_H = 5.7;
+const FLOOR2_Y = 5.7;
+const TOP_H = 10.6;
+const SLAB_THICKNESS = 0.35;
+
+/* 相机前移偏移量（修复摄像头被自身几何遮挡的问题） */
+const POV_CAM_FORWARD = 0.22;
+
+/* =========================================================
+   2. 渲染器 / 场景
+   ========================================================= */
+const renderer = new THREE.WebGLRenderer({
+  antialias: true, alpha: false,
+  powerPreference: "high-performance",
+});
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+renderer.shadowMap.enabled = false;
+
+const MAX_ANISOTROPY = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x18222e);
+scene.fog = new THREE.Fog(0x232c3a, 60, 175);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+scene.environment = envRT.texture;
+
+/* =========================================================
+   3. 灯光
+   ========================================================= */
+scene.add(new THREE.HemisphereLight(0xe8f4ff, 0x5a5145, 0.98));
+
+const keyLight = new THREE.DirectionalLight(0xfff2df, 1.65);
+keyLight.position.set(18, 34, 14);
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0xa9ccff, 0.9);
+fillLight.position.set(-20, 24, -16);
+scene.add(fillLight);
+
+const ACCENT_COLORS = [0xff4d9d, 0x35e0ff, 0xffc93c, 0x6cff9e];
+
+const ACCENT_LIGHTS = [
+  { color: 0xff4d9d, pos: [-12, 4.0, 0], intensity: 44 },
+  { color: 0x35e0ff, pos: [0, 4.0, 0], intensity: 44 },
+  { color: 0xffc93c, pos: [12, 4.0, 0], intensity: 44 },
+  { color: 0x6cff9e, pos: [0, 4.0, -6], intensity: 24 },
+  { color: 0x7f8bff, pos: [0, 4.0, 6], intensity: 24 },
+  { color: 0x35e0ff, pos: [-10, 8.4, -8], intensity: 20 },
+  { color: 0xff4d9d, pos: [10, 8.4, -8], intensity: 20 },
+  { color: 0xffc93c, pos: [-10, 8.4, 8], intensity: 20 },
+];
+
+for (const def of ACCENT_LIGHTS) {
+  const light = new THREE.PointLight(def.color, def.intensity, 24, 2);
+  light.position.set(def.pos[0], def.pos[1], def.pos[2]);
+  scene.add(light);
+}
+
+/* =========================================================
+   4. 几何/材质工具
+   ========================================================= */
+const GEO_BOX = new THREE.BoxGeometry(1, 1, 1);
+const GEO_CYLINDER = new THREE.CylinderGeometry(0.5, 0.5, 1, 20);
+const GEO_SPHERE = new THREE.SphereGeometry(0.5, 16, 12);
+
+const materialCache = new Map();
+
+function getMaterial(color, opts = {}) {
+  const roughness = opts.roughness !== undefined ? opts.roughness : 0.78;
+  const metalness = opts.metalness !== undefined ? opts.metalness : 0.05;
+  const emissive = opts.emissive !== undefined ? opts.emissive : 0x000000;
+  const emissiveIntensity = opts.emissiveIntensity !== undefined ? opts.emissiveIntensity : 1;
+  const opacity = opts.opacity !== undefined ? opts.opacity : 1;
+  const transparent = opacity < 1;
+
+  const key = [color, roughness, metalness, emissive, emissiveIntensity, opacity].join("|");
+  let mat = materialCache.get(key);
+
+  if (!mat) {
+    mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      roughness, metalness,
+      emissive: new THREE.Color(emissive),
+      emissiveIntensity,
+      transparent, opacity,
+    });
+    if (transparent) { mat.depthWrite = false; mat.side = THREE.DoubleSide; }
+    materialCache.set(key, mat);
+  }
+  return mat;
+}
+
+const world = new THREE.Group();
+scene.add(world);
+
+function addBox(parent, w, h, d, color, x, y, z, opts = {}) {
+  const mesh = new THREE.Mesh(GEO_BOX, getMaterial(color, opts));
+  mesh.scale.set(w, h, d);
+  mesh.position.set(x, y, z);
+  if (opts.rotationY) mesh.rotation.y = opts.rotationY;
+  parent.add(mesh);
+  return mesh;
+}
+function addCylinder(parent, radius, height, color, x, y, z, opts = {}) {
+  const mesh = new THREE.Mesh(GEO_CYLINDER, getMaterial(color, opts));
+  mesh.scale.set(radius * 2, height, radius * 2);
+  mesh.position.set(x, y, z);
+  parent.add(mesh);
+  return mesh;
+}
+function addSphere(parent, radius, color, x, y, z, opts = {}) {
+  const mesh = new THREE.Mesh(GEO_SPHERE, getMaterial(color, opts));
+  mesh.scale.set(radius * 2, radius * 2, radius * 2);
+  mesh.position.set(x, y, z);
+  parent.add(mesh);
+  return mesh;
+}
+function bx(x, y, z, w, h, d, color, opts) {
+  return addBox(world, w, h, d, color, x, y, z, opts || {});
+}
+
+const colliders = [];
+function addCollider(minX, maxX, minZ, maxZ) {
+  colliders.push({ minX, maxX, minZ, maxZ });
+}
+
+/* =========================================================
+   5. 文字贴图
+   ========================================================= */
+function makeTextTexture(text, opts = {}) {
+  const W = opts.width || 1024;
+  const H = opts.height || 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  if (opts.background) {
+    ctx.fillStyle = opts.background;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  const fontSize = opts.fontSize || Math.round(H * 0.58);
+  const fontFamily = opts.font ||
+    '"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "SF Mono", Consolas, sans-serif';
+  const weight = opts.weight || "700";
+
+  ctx.font = weight + " " + fontSize + "px " + fontFamily;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  if (opts.glow) { ctx.shadowColor = opts.glow; ctx.shadowBlur = fontSize * 0.42; }
+  ctx.fillStyle = opts.color || "#ffffff";
+
+  if (opts.stroke) {
+    ctx.lineWidth = fontSize * 0.085;
+    ctx.strokeStyle = opts.stroke;
+    ctx.strokeText(text, W / 2, H / 2 + (opts.offsetY || 0));
+  }
+
+  ctx.fillText(text, W / 2, H / 2 + (opts.offsetY || 0));
+
+  if (opts.glow) {
+    ctx.shadowBlur = fontSize * 0.72;
+    ctx.fillText(text, W / 2, H / 2 + (opts.offsetY || 0));
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = MAX_ANISOTROPY;
+  return tex;
+}
+
+function makeSignMaterial(texture, intensity = 1.7) {
+  return new THREE.MeshStandardMaterial({
+    map: texture, transparent: true,
+    emissiveMap: texture,
+    emissive: new THREE.Color(0xffffff),
+    emissiveIntensity: intensity,
+    roughness: 0.55, metalness: 0.08,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
+}
+
+/* =========================================================
+   6. 地面纹理
+   ========================================================= */
+function makeFloorTexture() {
+  const S = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = S; canvas.height = S;
+  const g = canvas.getContext("2d");
+
+  g.fillStyle = "#d9d2c4";
+  g.fillRect(0, 0, S, S);
+
+  const n = 4;
+  const tile = S / n;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const base = 208 + Math.floor(Math.random() * 26);
+      const grad = g.createLinearGradient(i*tile, j*tile, (i+1)*tile, (j+1)*tile);
+      grad.addColorStop(0, `rgb(${base}, ${base-10}, ${base-26})`);
+      grad.addColorStop(1, `rgb(${base-30}, ${base-38}, ${base-52})`);
+      g.fillStyle = grad;
+      g.fillRect(i*tile + 6, j*tile + 6, tile - 12, tile - 12);
+
+      for (let k = 0; k < 140; k++) {
+        const px = i*tile + 8 + Math.random() * (tile - 16);
+        const py = j*tile + 8 + Math.random() * (tile - 16);
+        const a = Math.random() * 0.09;
+        g.fillStyle = Math.random() > 0.5
+          ? `rgba(255,255,255,${a})` : `rgba(90,80,70,${a})`;
+        g.fillRect(px, py, 2, 2);
+      }
+
+      for (let k = 0; k < 12; k++) {
+        const sx = i*tile + 16 + Math.random() * (tile - 32);
+        const sy = j*tile + 16 + Math.random() * (tile - 32);
+        const len = 12 + Math.random() * 40;
+        const ang = Math.random() * Math.PI;
+        g.strokeStyle = `rgba(80,70,60,${0.03 + Math.random() * 0.05})`;
+        g.lineWidth = 0.8;
+        g.beginPath();
+        g.moveTo(sx, sy);
+        g.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len);
+        g.stroke();
+      }
+    }
+  }
+
+  g.strokeStyle = "rgba(140, 128, 112, 0.9)";
+  g.lineWidth = 4;
+  for (let i = 0; i <= n; i++) {
+    g.beginPath(); g.moveTo(i*tile, 0); g.lineTo(i*tile, S); g.stroke();
+    g.beginPath(); g.moveTo(0, i*tile); g.lineTo(S, i*tile); g.stroke();
+  }
+
+  g.strokeStyle = "rgba(255, 250, 240, 0.3)";
+  g.lineWidth = 1;
+  for (let i = 0; i <= n; i++) {
+    g.beginPath(); g.moveTo(i*tile + 2, 0); g.lineTo(i*tile + 2, S); g.stroke();
+    g.beginPath(); g.moveTo(0, i*tile + 2); g.lineTo(S, i*tile + 2); g.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(22, 17);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = MAX_ANISOTROPY;
+  return tex;
+}
+
+const floorMaterial = new THREE.MeshStandardMaterial({
+  map: makeFloorTexture(),
+  roughness: 0.18, metalness: 0.38, envMapIntensity: 1.2,
+});
+const floorMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(MALL.x1 - MALL.x0, MALL.z1 - MALL.z0),
+  floorMaterial
+);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.position.set((MALL.x0+MALL.x1)/2, 0, (MALL.z0+MALL.z1)/2);
+world.add(floorMesh);
+
+const floor2Material = new THREE.MeshStandardMaterial({
+  map: makeFloorTexture(), color: 0xd0c8b8,
+  roughness: 0.3, metalness: 0.28, envMapIntensity: 0.9,
+});
+
+function addSecondFloorSlab(cx, cz, w, d) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, SLAB_THICKNESS, d), floor2Material);
+  mesh.position.set(cx, FLOOR2_Y - SLAB_THICKNESS/2, cz);
+  world.add(mesh);
+  bx(cx, FLOOR2_Y - SLAB_THICKNESS - 0.04, cz, w, 0.06, d, 0x1a1e26,
+    { roughness: 0.9, metalness: 0.1 });
+}
+
+addSecondFloorSlab(0, (MALL.z0 + ATRIUM.z0) / 2, MALL.x1 - MALL.x0, ATRIUM.z0 - MALL.z0);
+addSecondFloorSlab(0, (MALL.z1 + ATRIUM.z1) / 2, MALL.x1 - MALL.x0, MALL.z1 - ATRIUM.z1);
+addSecondFloorSlab((MALL.x0 + ATRIUM.x0) / 2, 0, ATRIUM.x0 - MALL.x0, ATRIUM.z1 - ATRIUM.z0);
+addSecondFloorSlab((MALL.x1 + ATRIUM.x1) / 2, 0, MALL.x1 - ATRIUM.x1, ATRIUM.z1 - ATRIUM.z0);
+
+function addRailing(x1, z1, x2, z2) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.sqrt(dx*dx + dz*dz);
+  const cx = (x1+x2)/2, cz = (z1+z2)/2;
+  const isX = Math.abs(dx) > Math.abs(dz);
+  const railY = FLOOR2_Y + 0.55;
+
+  bx(cx, railY + 0.48, cz, isX ? len : 0.09, 0.08, isX ? 0.09 : len, 0xc8ccd4,
+    { roughness: 0.35, metalness: 0.65 });
+  bx(cx, railY + 0.10, cz, isX ? len : 0.06, 0.05, isX ? 0.06 : len, 0x9aa0a8,
+    { roughness: 0.4, metalness: 0.6 });
+  bx(cx, railY + 0.28, cz, isX ? len - 0.1 : 0.04, 0.62, isX ? 0.04 : len - 0.1, 0xbfe4ff,
+    { roughness: 0.05, metalness: 0.3, opacity: 0.28 });
+
+  const count = Math.floor(len / 2.4);
+  for (let i = 0; i <= count; i++) {
+    const t = count === 0 ? 0.5 : i / count;
+    const px = isX ? x1 + dx*t : x1;
+    const pz = isX ? z1 : z1 + dz*t;
+    bx(px, railY + 0.30, pz, 0.07, 0.62, 0.07, 0x9aa0a8,
+      { roughness: 0.4, metalness: 0.65 });
+  }
+
+  bx(cx, railY + 0.52, cz, isX ? len : 0.12, 0.04, isX ? 0.12 : len, 0x35e0ff,
+    { emissive: 0x35e0ff, emissiveIntensity: 1.4, roughness: 0.5, metalness: 0.2 });
+}
+
+addRailing(ATRIUM.x0, ATRIUM.z0, ATRIUM.x1, ATRIUM.z0);
+addRailing(ATRIUM.x0, ATRIUM.z1, ATRIUM.x1, ATRIUM.z1);
+addRailing(ATRIUM.x0, ATRIUM.z0, ATRIUM.x0, ATRIUM.z1);
+addRailing(ATRIUM.x1, ATRIUM.z0, ATRIUM.x1, ATRIUM.z1);
+
+function addTopCeil(cx, cz, w, d) {
+  bx(cx, TOP_H, cz, w, 0.22, d, 0x1e2532, { roughness: 0.95, metalness: 0.05 });
+}
+addTopCeil(0, (MALL.z0 + ATRIUM.z0) / 2, MALL.x1 - MALL.x0, ATRIUM.z0 - MALL.z0);
+addTopCeil(0, (MALL.z1 + ATRIUM.z1) / 2, MALL.x1 - MALL.x0, MALL.z1 - ATRIUM.z1);
+addTopCeil((MALL.x0 + ATRIUM.x0) / 2, 0, ATRIUM.x0 - MALL.x0, ATRIUM.z1 - ATRIUM.z0);
+addTopCeil((MALL.x1 + ATRIUM.x1) / 2, 0, MALL.x1 - ATRIUM.x1, ATRIUM.z1 - ATRIUM.z0);
+
+const skylight = new THREE.Mesh(
+  new THREE.PlaneGeometry(ATRIUM.x1 - ATRIUM.x0, ATRIUM.z1 - ATRIUM.z0),
+  getMaterial(0xd8ecff, {
+    emissive: 0xe8f4ff, emissiveIntensity: 0.7,
+    roughness: 0.05, metalness: 0.3, opacity: 0.28,
+  })
+);
+skylight.rotation.x = Math.PI / 2;
+skylight.position.y = TOP_H + 0.6;
+world.add(skylight);
+
+for (const [cx, cz, w, d] of [
+  [0, ATRIUM.z0, ATRIUM.x1 - ATRIUM.x0, 0.2],
+  [0, ATRIUM.z1, ATRIUM.x1 - ATRIUM.x0, 0.2],
+  [ATRIUM.x0, 0, 0.2, ATRIUM.z1 - ATRIUM.z0],
+  [ATRIUM.x1, 0, 0.2, ATRIUM.z1 - ATRIUM.z0],
+]) {
+  bx(cx, TOP_H + 0.5, cz, w, 0.14, d, 0x8fd4ff,
+    { emissive: 0x8fd4ff, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.2 });
+}
+
+for (let x = -12; x <= 12; x += 6) {
+  bx(x, TOP_H + 0.4, 0, 0.12, 0.22, ATRIUM.z1 - ATRIUM.z0, 0x6a7280,
+    { roughness: 0.5, metalness: 0.6 });
+}
+
+for (const def of [
+  { x: 0, z: ATRIUM.z0 - 0.4, w: 30, color: 0x35e0ff, isX: true },
+  { x: 0, z: ATRIUM.z1 + 0.4, w: 30, color: 0xff4d9d, isX: true },
+  { x: ATRIUM.x0 - 0.4, z: 0, w: 20, color: 0xffc93c, isX: false },
+  { x: ATRIUM.x1 + 0.4, z: 0, w: 20, color: 0x6cff9e, isX: false },
+]) {
+  if (def.isX) {
+    bx(def.x, FLOOR2_Y - SLAB_THICKNESS - 0.1, def.z, def.w, 0.14, 0.28, def.color,
+      { emissive: def.color, emissiveIntensity: 2.2, roughness: 0.5, metalness: 0.15 });
+  } else {
+    bx(def.x, FLOOR2_Y - SLAB_THICKNESS - 0.1, def.z, 0.28, 0.14, def.w, def.color,
+      { emissive: def.color, emissiveIntensity: 2.2, roughness: 0.5, metalness: 0.15 });
+  }
+}
+
+for (let x = -18; x <= 18; x += 6) {
+  for (const z of [-13.5, 13.5]) {
+    addCylinder(world, 0.16, 0.05, 0xfff4e0, x, FLOOR2_Y - 0.6, z,
+      { emissive: 0xffe9c8, emissiveIntensity: 2.0, roughness: 1.0, metalness: 0.0 });
+  }
+}
+
+for (let z = -8; z <= 8; z += 8) {
+  for (const x of [-18.5, 18.5]) {
+    addCylinder(world, 0.16, 0.05, 0xfff4e0, x, FLOOR2_Y - 0.6, z,
+      { emissive: 0xffe9c8, emissiveIntensity: 2.0, roughness: 1.0, metalness: 0.0 });
+  }
+}
+
+for (let x = -18; x <= 18; x += 4) {
+  for (const z of [-15.2, 15.2]) {
+    bx(x, FLOOR2_Y - SLAB_THICKNESS - 0.08, z, 0.8, 0.05, 0.4, 0x40474f,
+      { roughness: 0.7, metalness: 0.4 });
+  }
+}
+
+for (let x = -18; x <= 18; x += 6) {
+  for (const z of [-13.5, 13.5]) {
+    addCylinder(world, 0.16, 0.05, 0xfff4e0, x, TOP_H - 0.4, z,
+      { emissive: 0xffe9c8, emissiveIntensity: 2.0, roughness: 1.0, metalness: 0.0 });
+  }
+}
+
+for (const def of [
+  { x: 0, z: ATRIUM.z0 - 0.5, w: 30, color: 0x6cff9e, isX: true },
+  { x: 0, z: ATRIUM.z1 + 0.5, w: 30, color: 0xff8a3d, isX: true },
+  { x: ATRIUM.x0 - 0.5, z: 0, w: 20, color: 0xb46bff, isX: false },
+  { x: ATRIUM.x1 + 0.5, z: 0, w: 20, color: 0x35e0ff, isX: false },
+]) {
+  if (def.isX) {
+    bx(def.x, TOP_H - 0.2, def.z, def.w, 0.12, 0.24, def.color,
+      { emissive: def.color, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.15 });
+  } else {
+    bx(def.x, TOP_H - 0.2, def.z, 0.24, 0.12, def.w, def.color,
+      { emissive: def.color, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.15 });
+  }
+}
+
+/* =========================================================
+   7. 扶手电梯（无碰撞检测）
+   ========================================================= */
+const escalators = [];
+
+function createEscalator(cfg) {
+  const x = cfg.x;
+  const zBottom = cfg.zBottom;
+  const zTop = cfg.zTop;
+  const w = cfg.width || 1.4;
+
+  const bottom = new THREE.Vector3(x, 0.15, zBottom);
+  const top = new THREE.Vector3(x, FLOOR2_Y, zTop);
+
+  const len = bottom.distanceTo(top);
+  const angle = Math.atan2(top.y - bottom.y, top.z - bottom.z);
+  const dirZ = zTop > zBottom ? 1 : -1;
+
+  for (const s of [-1, 1]) {
+    const sideX = x + s * (w/2 + 0.06);
+    const glassLen = len + 0.4;
+    const mid = new THREE.Vector3().lerpVectors(bottom, top, 0.5);
+
+    const glassGeo = new THREE.BoxGeometry(0.08, 0.9, glassLen);
+    const glass = new THREE.Mesh(glassGeo, getMaterial(0xbfe4ff,
+      { roughness: 0.05, metalness: 0.6, opacity: 0.32 }));
+    glass.position.set(sideX, mid.y + 0.75, mid.z);
+    glass.rotation.x = -angle;
+    world.add(glass);
+
+    const railGeo = new THREE.BoxGeometry(0.14, 0.1, glassLen);
+    const rail = new THREE.Mesh(railGeo, getMaterial(0x1a1e26,
+      { roughness: 0.65, metalness: 0.2 }));
+    rail.position.set(sideX, mid.y + 1.2, mid.z);
+    rail.rotation.x = -angle;
+    world.add(rail);
+
+    const skirtGeo = new THREE.BoxGeometry(0.1, 0.35, glassLen);
+    const skirt = new THREE.Mesh(skirtGeo, getMaterial(0x6a7280,
+      { roughness: 0.4, metalness: 0.65 }));
+    skirt.position.set(sideX, mid.y - 0.1, mid.z);
+    skirt.rotation.x = -angle;
+    world.add(skirt);
+
+    const stripGeo = new THREE.BoxGeometry(0.04, 0.05, glassLen - 0.4);
+    const strip = new THREE.Mesh(stripGeo, getMaterial(0x35e0ff,
+      { emissive: 0x35e0ff, emissiveIntensity: 1.6, roughness: 0.5, metalness: 0.3 }));
+    strip.position.set(sideX, mid.y + 1.26, mid.z);
+    strip.rotation.x = -angle;
+    world.add(strip);
+  }
+
+  bx(x, 0.08, zBottom - dirZ*0.6, w + 0.3, 0.16, 1.4, 0x8a9099,
+    { roughness: 0.35, metalness: 0.6 });
+  bx(x, FLOOR2_Y + 0.05, zTop + dirZ*0.6, w + 0.3, 0.16, 1.4, 0x8a9099,
+    { roughness: 0.35, metalness: 0.6 });
+  bx(x, 0.18, zBottom, w + 0.2, 0.06, 0.5, 0xffd166,
+    { emissive: 0xffd166, emissiveIntensity: 1.2, roughness: 0.6, metalness: 0.4 });
+  bx(x, FLOOR2_Y + 0.15, zTop, w + 0.2, 0.06, 0.5, 0xffd166,
+    { emissive: 0xffd166, emissiveIntensity: 1.2, roughness: 0.6, metalness: 0.4 });
+
+  const stepCount = 14;
+  const stepW = w - 0.1;
+  const stepD = 0.42;
+  const steps = [];
+
+  for (let i = 0; i < stepCount; i++) {
+    const stepMat = getMaterial(0x4a5160, { roughness: 0.35, metalness: 0.7 });
+    const step = new THREE.Mesh(new THREE.BoxGeometry(stepW, 0.1, stepD), stepMat);
+    world.add(step);
+
+    const edge = new THREE.Mesh(
+      new THREE.BoxGeometry(stepW + 0.02, 0.02, 0.03),
+      getMaterial(0x35e0ff,
+        { emissive: 0x35e0ff, emissiveIntensity: 1.8, roughness: 0.5, metalness: 0.3 })
+    );
+    step.add(edge);
+    edge.position.set(0, 0.06, stepD/2 - 0.02);
+
+    steps.push({ mesh: step, t: i / stepCount });
+  }
+
+  escalators.push({
+    bottom: bottom.clone(), top: top.clone(),
+    steps: steps,
+    speed: cfg.up ? 0.14 : -0.14,
+  });
+}
+
+createEscalator({ x: -6, zBottom: 0, zTop: 10, width: 1.4, up: true });
+createEscalator({ x: 6, zBottom: 0, zTop: 10, width: 1.4, up: false });
+
+function updateEscalators(dt) {
+  for (const esc of escalators) {
+    for (const s of esc.steps) {
+      s.t += esc.speed * dt;
+      if (s.t > 1) s.t -= 1;
+      if (s.t < 0) s.t += 1;
+      const p = new THREE.Vector3().lerpVectors(esc.bottom, esc.top, s.t);
+      s.mesh.position.copy(p);
+    }
+  }
+}
+
+/* =========================================================
+   8. 商铺定义与建造
+   ========================================================= */
+const SHOP_DEFS = [
+  { id: "fashion", name: "霓裳 · 时装", short: "霓裳",
+    fcx: -11.25, fcz: -10, w: 7.5, d: 7, frontAxis: "x", normal: 1,
+    theme: { wall: 0xf2b8c6, sign: 0xff3d7f, interior: 0xffd9e6,
+      font: '"STKaiti","KaiTi","Songti SC","SimSun",serif',
+      textColor: "#ffffff", glowColor: "#ff9ec4" } },
+  { id: "dji", name: "大疆 DJI", short: "DJI",
+    fcx: -3.75, fcz: -10, w: 7.5, d: 7, frontAxis: "x", normal: 1,
+    theme: { wall: 0x2a3038, sign: 0x101418, interior: 0x1c2229,
+      font: '"Arial Black","Impact","Helvetica Neue",sans-serif',
+      textColor: "#ffffff", glowColor: "#00d4ff" } },
+  { id: "coffee", name: "暖阳 · 咖啡", short: "暖阳",
+    fcx: 3.75, fcz: -10, w: 7.5, d: 7, frontAxis: "x", normal: 1,
+    theme: { wall: 0xf5d99a, sign: 0xb5651d, interior: 0xffefd0,
+      font: '"Georgia","Times New Roman","Songti SC",serif',
+      textColor: "#fff6e0", glowColor: "#ffb347" } },
+  { id: "apple", name: "Apple Store", short: "Apple",
+    fcx: 11.25, fcz: -10, w: 7.5, d: 7, frontAxis: "x", normal: 1,
+    theme: { wall: 0xf0f2f5, sign: 0x1a1a1a, interior: 0xfafafa,
+      font: '"SF Pro Display","Helvetica Neue","Arial",sans-serif',
+      textColor: "#ffffff", glowColor: "#5ac8fa" } },
+  { id: "sports", name: "绿野 · 运动", short: "绿野",
+    fcx: -11.25, fcz: 10, w: 7.5, d: 7, frontAxis: "x", normal: -1,
+    theme: { wall: 0xabe3b4, sign: 0x24c46b, interior: 0xd8ffe2,
+      font: '"Impact","Arial Black","Haettenschweiler",sans-serif',
+      textColor: "#ffffff", glowColor: "#7dffb0" } },
+  { id: "books", name: "青柠 · 书店", short: "青柠",
+    fcx: -3.75, fcz: 10, w: 7.5, d: 7, frontAxis: "x", normal: -1,
+    theme: { wall: 0xd9e8c4, sign: 0x4a7c3f, interior: 0xf2f7ea,
+      font: '"STSong","Songti SC","SimSun","Georgia",serif',
+      textColor: "#f0f7e6", glowColor: "#a8e06a" } },
+  { id: "beauty", name: "紫悦 · 美妆", short: "紫悦",
+    fcx: 3.75, fcz: 10, w: 7.5, d: 7, frontAxis: "x", normal: -1,
+    theme: { wall: 0xcbb6f0, sign: 0x8a4bff, interior: 0xe9dcff,
+      font: '"Didot","Bodoni MT","Songti SC",serif',
+      textColor: "#ffffff", glowColor: "#d9a6ff" } },
+  { id: "jewelry", name: "橙风 · 珠宝", short: "橙风",
+    fcx: 11.25, fcz: 10, w: 7.5, d: 7, frontAxis: "x", normal: -1,
+    theme: { wall: 0xf3b9a0, sign: 0xff6a3d, interior: 0xffe0d3,
+      font: '"Bodoni MT","Didot","Times New Roman",serif',
+      textColor: "#fff4d8", glowColor: "#ffd166" } },
+  { id: "kids", name: "星光 · 童趣", short: "星光",
+    fcx: -15, fcz: -5, w: 10, d: 7, frontAxis: "z", normal: 1,
+    theme: { wall: 0xa8e6ff, sign: 0xff8a3d, interior: 0xe0f7ff,
+      font: '"Comic Sans MS","Marker Felt","Yuanti SC",cursive',
+      textColor: "#ffffff", glowColor: "#ffd166" } },
+  { id: "home", name: "金穗 · 家居", short: "金穗",
+    fcx: -15, fcz: 5, w: 10, d: 7, frontAxis: "z", normal: 1,
+    theme: { wall: 0xf0e2c8, sign: 0xc9a227, interior: 0xfff8e8,
+      font: '"Optima","Candara","Helvetica Neue",sans-serif',
+      textColor: "#fff8e0", glowColor: "#ffd166" } },
+  { id: "food", name: "红韵 · 食府", short: "红韵",
+    fcx: 15, fcz: -5, w: 10, d: 7, frontAxis: "z", normal: -1,
+    theme: { wall: 0xf0c0b0, sign: 0xc0392b, interior: 0xffe8e0,
+      font: '"STXingkai","Xingkai SC","LiSu",cursive',
+      textColor: "#fff0d0", glowColor: "#ff8a5c" } },
+  { id: "sony", name: "索尼 · 影音", short: "SONY",
+    fcx: 15, fcz: 5, w: 10, d: 7, frontAxis: "z", normal: -1,
+    theme: { wall: 0x1a1e24, sign: 0x0a0d10, interior: 0x22262c,
+      font: '"Arial","Helvetica Neue","Verdana",sans-serif',
+      textColor: "#ffffff", glowColor: "#0070d1" } },
+];
+
+function shopPos(shop, u, v) {
+  const { fcx, fcz, frontAxis, normal } = shop;
+  if (frontAxis === "x") return [fcx + u, fcz + (-normal) * v];
+  return [fcx + (-normal) * v, fcz + u];
+}
+function shopDims(shop, w, h, d) {
+  if (shop.frontAxis === "x") return [w, h, d];
+  return [d, h, w];
+}
+function shopAABB(shop) {
+  const { fcx, fcz, w, d, frontAxis, normal } = shop;
+  if (frontAxis === "x") {
+    const z0 = normal > 0 ? fcz - d : fcz;
+    const z1 = normal > 0 ? fcz : fcz + d;
+    return { minX: fcx - w/2, maxX: fcx + w/2, minZ: z0, maxZ: z1 };
+  } else {
+    const x0 = normal > 0 ? fcx - d : fcx;
+    const x1 = normal > 0 ? fcx : fcx + d;
+    return { minX: x0, maxX: x1, minZ: fcz - w/2, maxZ: fcz + w/2 };
+  }
+}
+const P = (shop, u, v) => shopPos(shop, u, v);
+const D = (shop, w, h, d) => shopDims(shop, w, h, d);
+
+function buildShopSign(shop) {
+  const theme = shop.theme;
+  const [bw, bh, bd] = D(shop, shop.w - 0.3, 1.05, 0.32);
+  const [bsx, bsz] = P(shop, 0, -0.2);
+  bx(bsx, 4.45, bsz, bw, bh, bd, theme.sign,
+    { emissive: theme.sign, emissiveIntensity: 1.55, roughness: 0.55, metalness: 0.1 });
+
+  const nameTex = makeTextTexture(shop.name, {
+    width: 1024, height: 256,
+    color: theme.textColor, glow: theme.glowColor,
+    stroke: "rgba(0,0,0,0.42)", fontSize: 128, font: theme.font,
+  });
+  const nameMat = makeSignMaterial(nameTex, 1.9);
+  const namePlane = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.4), nameMat);
+  const [nsx, nsz] = P(shop, 0, -0.38);
+  namePlane.position.set(nsx, 4.45, nsz);
+
+  if (shop.frontAxis === "x") {
+    namePlane.rotation.y = shop.normal > 0 ? 0 : Math.PI;
+  } else {
+    namePlane.rotation.y = shop.normal > 0 ? Math.PI/2 : -Math.PI/2;
+  }
+  world.add(namePlane);
+
+  const [lw, lh, ld] = D(shop, shop.w - 0.2, 0.12, 0.2);
+  const [lsx, lsz] = P(shop, 0, -0.28);
+  bx(lsx, 3.86, lsz, lw, lh, ld, theme.sign,
+    { emissive: theme.sign, emissiveIntensity: 1.4, roughness: 0.6, metalness: 0.12 });
+
+  const sideTex = makeTextTexture(shop.short, {
+    width: 256, height: 1024,
+    color: theme.textColor, glow: theme.glowColor,
+    fontSize: 96, font: theme.font,
+  });
+  const sideMat = makeSignMaterial(sideTex, 1.5);
+  const sidePlane = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 3.0), sideMat);
+  const [spx, spz] = P(shop, -shop.w/2 + 0.15, 2.0);
+  sidePlane.position.set(spx, 2.85, spz);
+  if (shop.frontAxis === "x") sidePlane.rotation.y = Math.PI/2;
+  else sidePlane.rotation.y = 0;
+  world.add(sidePlane);
+}
+
+function buildShop(shop) {
+  const theme = shop.theme;
+
+  const [bwp, bhp, bdp] = D(shop, shop.w, 5.5, 0.4);
+  const [bwx, bwz] = P(shop, 0, shop.d);
+  bx(bwx, 2.75, bwz, bwp, bhp, bdp, theme.wall, { roughness: 0.9, metalness: 0.03 });
+
+  const [fw, fh, fd] = D(shop, shop.w - 0.4, 0.08, shop.d - 0.4);
+  const [fx, fz] = P(shop, 0, shop.d/2);
+  bx(fx, 0.04, fz, fw, fh, fd, theme.interior, { roughness: 0.35, metalness: 0.20 });
+
+  for (const s of [-1, 1]) {
+    const [sw, sh, sd] = D(shop, 0.28, 5.5, shop.d);
+    const [swx, swz] = P(shop, s * shop.w/2, shop.d/2);
+    bx(swx, 2.75, swz, sw, sh, sd, 0xe7e0d4, { roughness: 0.86, metalness: 0.04 });
+  }
+
+  const [cw, ch, cd] = D(shop, shop.w - 0.5, 0.16, shop.d - 0.6);
+  const [cx, cz] = P(shop, 0, shop.d/2);
+  bx(cx, 5.42, cz, cw, ch, cd, 0xf3eee4, { roughness: 0.92, metalness: 0.03 });
+
+  const [gw, gh, gd] = D(shop, shop.w - 0.6, 3.4, 0.1);
+  const [gx, gz] = P(shop, 0, 0);
+  bx(gx, 2.05, gz, gw, gh, gd, 0xbfe4ff,
+    { roughness: 0.05, metalness: 0.66, opacity: 0.28 });
+
+  for (const s of [-1, 1]) {
+    const [mw, mh, md] = D(shop, 0.12, 3.4, 0.16);
+    const [mx, mz] = P(shop, s * (shop.w/2 - 0.4), 0);
+    bx(mx, 2.05, mz, mw, mh, md, 0x5d6470, { roughness: 0.35, metalness: 0.6 });
+  }
+
+  const [tw, th, td] = D(shop, shop.w - 0.3, 0.14, 0.16);
+  bx(gx, 3.72, gz, tw, th, td, 0x5d6470, { roughness: 0.35, metalness: 0.6 });
+
+  const [bwt, bht, bdt] = D(shop, shop.w - 0.3, 0.12, 0.16);
+  bx(gx, 0.10, gz, bwt, bht, bdt, 0x5d6470, { roughness: 0.4, metalness: 0.55 });
+
+  for (let k = -1; k <= 1; k++) {
+    const [px, pz] = P(shop, k * (shop.w/4), 2.4);
+    const [dw, dh, dd] = D(shop, 0.9, 0.1, 0.4);
+    bx(px, 5.32, pz, dw, dh, dd, 0xffffff,
+      { emissive: 0xfff2dd, emissiveIntensity: 2.0, roughness: 1.0, metalness: 0.0 });
+  }
+
+  buildShopSign(shop);
+
+  const aabb = shopAABB(shop);
+  addCollider(aabb.minX, aabb.maxX, aabb.minZ, aabb.maxZ);
+}
+
+/* 商品陈列 */
+function merchFashion(shop) {
+  const cc = [0xff8fb0, 0xffd166, 0x8fd4ff, 0xc9a6ff, 0x9ff2c4, 0xffa07a];
+  const railY = 1.75;
+  const [rpx, rpz] = P(shop, -1.2, 3.2);
+  const [rw, rh, rd] = D(shop, 2.8, 0.06, 0.06);
+  for (const du of [-1.4, 1.4]) {
+    const [lx, lz] = P(shop, -1.2 + du, 3.2);
+    const [lw, lh, ld] = D(shop, 0.06, railY, 0.06);
+    bx(lx, railY/2, lz, lw, lh, ld, 0xc8ccd4, { metalness: 0.7, roughness: 0.3 });
+  }
+  bx(rpx, railY, rpz, rw, rh, rd, 0xc8ccd4, { metalness: 0.7, roughness: 0.3 });
+  for (let i = 0; i < 6; i++) {
+    const [gx, gz] = P(shop, -2.3 + i * 0.44, 3.2);
+    const [gw, gh, gd] = D(shop, 0.36, 1.0, 0.14);
+    bx(gx, railY - 0.5, gz, gw, gh, gd, cc[i % cc.length], { roughness: 0.85 });
+  }
+  for (let i = 0; i < 2; i++) {
+    const [mx, mz] = P(shop, 0.6 + i * 1.6, 1.8);
+    addCylinder(world, 0.20, 0.06, 0x3a3f48, mx, 0.03, mz, { roughness: 0.4, metalness: 0.5 });
+    addCylinder(world, 0.04, 1.0, 0x707880, mx, 0.53, mz, { roughness: 0.4, metalness: 0.6 });
+    bx(mx, 1.28, mz, 0.38, 0.62, 0.26, cc[(i+2)%cc.length], { roughness: 0.8 });
+    addSphere(world, 0.11, 0xe8c9a8, mx, 1.68, mz, { roughness: 0.72 });
+  }
+}
+
+function buildDroneDisplay(x, y, z, s, accent) {
+  bx(x, y, z, 0.36*s, 0.12*s, 0.32*s, 0x2b2f36, { roughness: 0.4, metalness: 0.6 });
+  bx(x, y + 0.08*s, z, 0.28*s, 0.06*s, 0.24*s, 0x3a3f48, { roughness: 0.4, metalness: 0.6 });
+  addSphere(world, 0.065*s, 0x15181c, x, y - 0.08*s, z + 0.12*s, { roughness: 0.3, metalness: 0.55 });
+  addCylinder(world, 0.03*s, 0.03*s, 0x4aa8ff, x, y - 0.08*s, z + 0.17*s,
+    { roughness: 0.2, metalness: 0.7, emissive: 0x4aa8ff, emissiveIntensity: 0.6 });
+
+  const armLen = 0.30*s;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const ex = x + sx*armLen, ez = z + sz*armLen;
+    const dxv = ex - x, dzv = ez - z;
+    const len = Math.sqrt(dxv*dxv + dzv*dzv);
+    bx((x+ex)/2, y + 0.015*s, (z+ez)/2, len, 0.04*s, 0.04*s, 0x33383f,
+      { roughness: 0.5, metalness: 0.5, rotationY: Math.atan2(-dzv, dxv) });
+    addCylinder(world, 0.045*s, 0.06*s, 0x22262c, ex, y + 0.05*s, ez, { roughness: 0.5, metalness: 0.6 });
+    bx(ex, y + 0.09*s, ez, 0.32*s, 0.014*s, 0.05*s, 0x5a626d, { roughness: 0.7, metalness: 0.25 });
+    bx(ex, y + 0.09*s, ez, 0.05*s, 0.014*s, 0.32*s, 0x5a626d, { roughness: 0.7, metalness: 0.25 });
+    for (const t of [1, -1]) {
+      addSphere(world, 0.022*s, accent, ex + t*0.16*s, y + 0.09*s, ez,
+        { emissive: accent, emissiveIntensity: 1.2, roughness: 0.6 });
+    }
+  }
+}
+
+function merchDJI(shop) {
+  const a = 0x00d4ff, a2 = 0xff5fa2;
+  const [t1x, t1z] = P(shop, -1.8, 2.6);
+  bx(t1x, 0.45, t1z, 2.0, 0.9, 1.6, 0x1e242c, { roughness: 0.35, metalness: 0.5 });
+  bx(t1x, 0.92, t1z, 2.1, 0.06, 1.7, a, { emissive: a, emissiveIntensity: 1.0, roughness: 0.5, metalness: 0.3 });
+  buildDroneDisplay(t1x, 1.28, t1z, 1.0, a);
+
+  const [t2x, t2z] = P(shop, 0.8, 5.0);
+  bx(t2x, 0.35, t2z, 1.6, 0.7, 1.4, 0x1e242c, { roughness: 0.35, metalness: 0.5 });
+  bx(t2x, 0.72, t2z, 1.7, 0.06, 1.5, a2, { emissive: a2, emissiveIntensity: 1.0, roughness: 0.5, metalness: 0.3 });
+  buildDroneDisplay(t2x, 1.05, t2z, 0.82, a2);
+
+  for (let i = 0; i < 3; i++) {
+    const [mx, mz] = P(shop, 2.8, 2.4 + i*0.05);
+    const [mw, mh, md] = D(shop, 0.12, 0.72, 1.2);
+    bx(mx, 2.2 + i*0.85, mz, mw, mh, md, 0x0a0e12, { roughness: 0.3, metalness: 0.5 });
+    const [sx, sz] = P(shop, 2.7, 2.4 + i*0.05);
+    const [sw, sh, sd] = D(shop, 0.04, 0.6, 1.1);
+    bx(sx, 2.2 + i*0.85, sz, sw, sh, sd, 0x1a4a6a,
+      { emissive: 0x2a9ad8, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.3 });
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const [px, pz] = P(shop, -2.6 + i*1.6, 5.8);
+    addCylinder(world, 0.05, 1.8, 0x3a4048, px, 0.9, pz, { roughness: 0.4, metalness: 0.6 });
+    addCylinder(world, 0.18, 0.06, 0x22272e, px, 0.03, pz, { roughness: 0.5, metalness: 0.5 });
+    addSphere(world, 0.13, 0x1a1e24, px, 1.85, pz, { roughness: 0.35, metalness: 0.5 });
+    addCylinder(world, 0.065, 0.12, 0x0a0d10, px, 1.85, pz + 0.14, { roughness: 0.25, metalness: 0.6 });
+    addCylinder(world, 0.04, 0.06, 0x4aa8ff, px, 1.85, pz + 0.20,
+      { emissive: 0x4aa8ff, emissiveIntensity: 0.9, roughness: 0.2, metalness: 0.5 });
+  }
+}
+
+function merchCoffee(shop) {
+  const theme = shop.theme;
+  const [bx1, bz1] = P(shop, -0.8, 2.2);
+  bx(bx1, 0.55, bz1, 3.6, 1.1, 0.8, 0x6b4a32, { roughness: 0.65, metalness: 0.05 });
+  bx(bx1, 1.12, bz1, 3.7, 0.08, 0.9, theme.sign,
+    { emissive: theme.sign, emissiveIntensity: 0.4, roughness: 0.5, metalness: 0.2 });
+
+  const [mx, mz] = P(shop, 1.0, 2.2);
+  bx(mx, 1.55, mz, 0.65, 0.8, 0.55, 0x30363e, { roughness: 0.35, metalness: 0.6 });
+  bx(mx, 1.98, mz, 0.7, 0.08, 0.6, 0xb87333, { roughness: 0.4, metalness: 0.75 });
+  addCylinder(world, 0.1, 0.1, 0x1a1e24, mx, 1.22, mz + 0.28, { roughness: 0.35, metalness: 0.5 });
+
+  for (let i = 0; i < 4; i++) {
+    const [cx, cz] = P(shop, -2.4 + i*0.32, 2.0);
+    addCylinder(world, 0.065, 0.15, 0xf2ede4, cx, 1.24, cz, { roughness: 0.4, metalness: 0.05 });
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const [lx, lz] = P(shop, -1.6 + i*1.8, 3.4);
+    bx(lx, 3.9, lz, 0.04, 1.3, 0.04, 0x3a3f48, { roughness: 0.4, metalness: 0.6 });
+    addCylinder(world, 0.24, 0.32, 0xc98f4a, lx, 3.1, lz, { roughness: 0.55, metalness: 0.4 });
+    addSphere(world, 0.12, 0xfff0c8, lx, 3.0, lz, { emissive: 0xffd9a0, emissiveIntensity: 2.4, roughness: 0.8 });
+  }
+
+  for (let i = 0; i < 2; i++) {
+    const [tx, tz] = P(shop, -1.8 + i*2.2, 5.2);
+    addCylinder(world, 0.33, 0.06, 0x8a6a4a, tx, 0.72, tz, { roughness: 0.7 });
+    addCylinder(world, 0.05, 0.72, 0x5a5f68, tx, 0.36, tz, { roughness: 0.4, metalness: 0.6 });
+    for (const ds of [-1, 1]) {
+      addCylinder(world, 0.2, 0.06, 0x7a5a3a, tx + ds*0.85, 0.5, tz, { roughness: 0.7 });
+      addCylinder(world, 0.04, 0.5, 0x5a5f68, tx + ds*0.85, 0.25, tz, { roughness: 0.4, metalness: 0.6 });
+    }
+    addCylinder(world, 0.06, 0.12, 0xf2ede4, tx, 0.81, tz, { roughness: 0.4 });
+  }
+}
+
+function merchApple(shop) {
+  const A = 0x4a90e2;
+  for (let i = 0; i < 2; i++) {
+    const [tx, tz] = P(shop, -2.0 + i*3.6, 3.5);
+    bx(tx, 0.88, tz, 2.2, 0.08, 1.2, 0xd8c8a8, { roughness: 0.45, metalness: 0.05 });
+    for (const du of [-1, 1]) for (const dv of [-0.4, 0.4]) {
+      const [lx, lz] = P(shop, -2.0 + i*3.6 + du*0.95, 3.5 + dv*0.45);
+      bx(lx, 0.42, lz, 0.08, 0.84, 0.08, 0xb8b8b8, { roughness: 0.3, metalness: 0.7 });
+    }
+    for (let k = -1; k <= 1; k++) {
+      const [mx, mz] = P(shop, -2.0 + i*3.6 + k*0.7, 3.5);
+      bx(mx, 0.94, mz, 0.4, 0.02, 0.28, 0xc8c8c8, { roughness: 0.2, metalness: 0.8 });
+      const [sx, sz] = P(shop, -2.0 + i*3.6 + k*0.7, 3.5 - 0.11);
+      bx(sx, 1.08, sz, 0.36, 0.26, 0.02, 0x1a1a1a, { roughness: 0.25, metalness: 0.5 });
+      const [s2x, s2z] = P(shop, -2.0 + i*3.6 + k*0.7, 3.5 - 0.12);
+      bx(s2x, 1.08, s2z, 0.32, 0.22, 0.01, A, { emissive: A, emissiveIntensity: 1.4, roughness: 0.3 });
+    }
+  }
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) {
+    const [px, pz] = P(shop, -2.8 + c*1.85, 5.9);
+    bx(px, 1.4 + r*0.9, pz, 0.2, 0.04, 0.2, 0xe8e8e8, { roughness: 0.3, metalness: 0.5 });
+    bx(px, 1.62 + r*0.9, pz, 0.13, 0.28, 0.02, 0x0a0a0a, { roughness: 0.3, metalness: 0.6 });
+    const [sx, sz] = P(shop, -2.8 + c*1.85, 5.92);
+    bx(sx, 1.62 + r*0.9, sz, 0.11, 0.24, 0.01, A, { emissive: A, emissiveIntensity: 1.2, roughness: 0.25 });
+  }
+  const [wpx, wpz] = P(shop, 0, 6.85);
+  const [wpw, wph, wpd] = D(shop, 7.0, 3.5, 0.1);
+  bx(wpx, 3.2, wpz, wpw, wph, wpd, 0xfafafa, { roughness: 0.8, metalness: 0.05 });
+  const [lpx, lpz] = P(shop, 0, 6.75);
+  const [lpw, lph, lpd] = D(shop, 1.2, 1.4, 0.08);
+  bx(lpx, 3.5, lpz, lpw, lph, lpd, 0xffffff,
+    { emissive: 0xffffff, emissiveIntensity: 1.8, roughness: 0.4 });
+}
+
+function merchSports(shop) {
+  const theme = shop.theme;
+  const accent = theme.sign;
+  const ballColors = [0xff8c3a, 0xf2f2f2, 0xffd166, 0x4aa8ff];
+  const [sx, sz] = P(shop, -2.8, 2.6);
+  const [sw, sh, sd] = D(shop, 0.18, 1.8, 2.0);
+  bx(sx, 0.9, sz, sw, sh, sd, 0x2f353d, { roughness: 0.6, metalness: 0.3 });
+  for (let i = 0; i < 4; i++) {
+    const [px, pz] = P(shop, -2.6, 1.8 + i*0.65);
+    addSphere(world, 0.17, ballColors[i], px, 0.4 + (i%2)*0.55, pz, { roughness: 0.75 });
+  }
+  for (let i = 0; i < 2; i++) {
+    const [rx, rz] = P(shop, -0.6 + i*1.4, 1.6);
+    bx(rx, 1.5, rz, 0.45, 0.65, 0.05, accent, { roughness: 0.6 });
+    bx(rx, 1.0, rz, 0.07, 0.5, 0.05, 0x3a3f48, { roughness: 0.5, metalness: 0.4 });
+  }
+  for (let k = 0; k < 3; k++) {
+    const [sx2, sz2] = P(shop, 1.8, 4.6);
+    bx(sx2, 0.4 + k*0.6, sz2, 2.4, 0.08, 0.45, 0xe0d8cc, { roughness: 0.6, metalness: 0.1 });
+    for (let i = 0; i < 3; i++) {
+      const [px, pz] = P(shop, 0.8 + i*0.75, 4.6);
+      bx(px, 0.53 + k*0.6, pz, 0.32, 0.15, 0.22, ballColors[(k+i)%4], { roughness: 0.8 });
+    }
+  }
+}
+
+function merchBooks(shop) {
+  const bc = [0xc0392b, 0x2980b9, 0x27ae60, 0xf39c12, 0x8e44ad, 0x16a085, 0xd35400, 0x2c3e50];
+  for (let s = 0; s < 2; s++) {
+    const [sx, sz] = P(shop, -2.6 + s*1.4, 1.0);
+    bx(sx, 1.5, sz, 1.15, 3.0, 0.32, 0x8a6a4a, { roughness: 0.75 });
+    for (let k = 0; k < 5; k++) {
+      bx(sx, 0.4 + k*0.6, sz, 1.1, 0.06, 0.35, 0xd8c8b0, { roughness: 0.7 });
+      for (let i = 0; i < 6; i++) {
+        const [px, pz] = P(shop, -2.6 + s*1.4 - 0.45 + i*0.15, 1.0);
+        bx(px, 0.55 + k*0.6, pz, 0.1, 0.28, 0.22, bc[(k*6+i)%bc.length], { roughness: 0.85 });
+      }
+    }
+  }
+  for (let s = 0; s < 2; s++) {
+    const [sx, sz] = P(shop, -1.8 + s*3.6, 4.6);
+    bx(sx, 1.4, sz, 1.4, 2.8, 0.32, 0x8a6a4a, { roughness: 0.75 });
+    for (let k = 0; k < 4; k++) {
+      bx(sx, 0.45 + k*0.65, sz, 1.34, 0.06, 0.35, 0xd8c8b0, { roughness: 0.7 });
+      for (let i = 0; i < 7; i++) {
+        const [px, pz] = P(shop, -1.8 + s*3.6 - 0.58 + i*0.17, 4.6);
+        bx(px, 0.62 + k*0.65, pz, 0.11, 0.3, 0.22, bc[(k*7+i+3)%bc.length], { roughness: 0.85 });
+      }
+    }
+  }
+  const [rx, rz] = P(shop, 2.0, 3.4);
+  bx(rx, 0.45, rz, 2.0, 0.08, 1.0, 0xc99a5b, { roughness: 0.7 });
+  bx(rx, 0.2, rz, 1.8, 0.4, 0.85, 0x8a6a4a, { roughness: 0.75 });
+  addCylinder(world, 0.13, 0.04, 0x2a3038, rx + 0.65, 0.52, rz, { roughness: 0.4, metalness: 0.5 });
+  addCylinder(world, 0.028, 0.45, 0x3a4048, rx + 0.65, 0.76, rz, { roughness: 0.4, metalness: 0.6 });
+  addCylinder(world, 0.15, 0.14, 0xfff0c8, rx + 0.65, 1.0, rz,
+    { emissive: 0xffe0a0, emissiveIntensity: 1.8, roughness: 0.8 });
+}
+
+function merchBeauty(shop) {
+  const [bx1, bz1] = P(shop, -1.2, 2.0);
+  bx(bx1, 0.5, bz1, 3.0, 1.0, 0.9, 0xf0e8f5, { roughness: 0.2, metalness: 0.3, opacity: 0.75 });
+  for (let i = 0; i < 6; i++) {
+    const [lx, lz] = P(shop, -2.4 + i*0.8, 2.0);
+    addCylinder(world, 0.033, 0.2, 0xd4af37, lx, 1.12, lz, { roughness: 0.35, metalness: 0.8 });
+    addCylinder(world, 0.038, 0.08, 0xe84a6a, lx, 1.26, lz, { roughness: 0.4, metalness: 0.2 });
+  }
+  const pc = [0xffd1e0, 0xd4b8ff, 0xb8e8ff, 0xfff0b8, 0xffb8c4];
+  for (let i = 0; i < 4; i++) {
+    const [px, pz] = P(shop, -1.8 + i*1.2, 4.0);
+    bx(px, 1.22, pz, 0.22, 0.34, 0.22, pc[i], { roughness: 0.15, metalness: 0.3, opacity: 0.8 });
+    addCylinder(world, 0.045, 0.1, 0xd4af37, px, 1.46, pz, { roughness: 0.3, metalness: 0.8 });
+  }
+  const [tx, tz] = P(shop, 2.0, 2.4);
+  bx(tx, 0.55, tz, 2.0, 1.1, 0.7, 0xf5eef8, { roughness: 0.4, metalness: 0.2 });
+  for (let i = 0; i < 3; i++) {
+    const [mx, mz] = P(shop, 1.3 + i*0.55, 2.4);
+    bx(mx, 1.8, mz, 0.45, 1.2, 0.05, 0xe8e0f0, { roughness: 0.1, metalness: 0.85 });
+  }
+  for (let i = 0; i < 3; i++) {
+    const [lx, lz] = P(shop, 1.4 + i*0.6, 2.4);
+    addCylinder(world, 0.18, 0.05, 0xffffff, lx, 2.45, lz,
+      { emissive: 0xffe8f4, emissiveIntensity: 1.8, roughness: 0.9 });
+  }
+}
+
+function merchJewelry(shop) {
+  for (let i = 0; i < 3; i++) {
+    const [gx, gz] = P(shop, -1.9 + i*1.9, 2.4);
+    bx(gx, 0.45, gz, 1.4, 0.9, 1.0, 0x1a1f26, { roughness: 0.35, metalness: 0.5 });
+    bx(gx, 0.92, gz, 1.5, 0.06, 1.1, 0xd4af37, { roughness: 0.3, metalness: 0.85 });
+    bx(gx, 1.3, gz, 1.3, 0.7, 0.9, 0xe8f4ff, { roughness: 0.05, metalness: 0.5, opacity: 0.25 });
+    for (let k = 0; k < 3; k++) {
+      const [jx, jz] = P(shop, -1.9 + i*1.9, 2.4 - 0.28 + k*0.28);
+      addCylinder(world, 0.055, 0.045, 0xffffff, jx, 1.0, jz,
+        { emissive: 0xfff0c0, emissiveIntensity: 1.4, roughness: 0.3, metalness: 0.6 });
+      addSphere(world, 0.032, 0x4aa8ff, jx, 1.06, jz,
+        { emissive: 0x4aa8ff, emissiveIntensity: 0.9, roughness: 0.15, metalness: 0.4 });
+    }
+  }
+  for (let i = 0; i < 2; i++) {
+    const [px, pz] = P(shop, 0.4 + i*1.8, 5.4);
+    addCylinder(world, 0.22, 1.4, 0x2a3038, px, 0.7, pz, { roughness: 0.4, metalness: 0.5 });
+    addCylinder(world, 0.28, 0.08, 0xd4af37, px, 1.44, pz, { roughness: 0.3, metalness: 0.85 });
+    addSphere(world, 0.09, 0xffd166, px, 1.62, pz,
+      { emissive: 0xffd166, emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.6 });
+  }
+}
+
+function merchKids(shop) {
+  const tc = [0xff6b6b, 0xffd166, 0x4ecdc4, 0x9d7cff, 0x6bcb77, 0xff8fb0];
+  for (let i = 0; i < 6; i++) {
+    const s = 0.45 - i*0.04;
+    const [px, pz] = P(shop, -2.6, 2.4);
+    bx(px, 0.25 + i*0.45, pz, s, 0.45, s, tc[i % tc.length], { roughness: 0.7 });
+  }
+  const [bearX, bearZ] = P(shop, 0.5, 2.6);
+  addSphere(world, 0.26, 0xc99a5b, bearX, 0.85, bearZ, { roughness: 0.9 });
+  addSphere(world, 0.18, 0xc99a5b, bearX, 1.2, bearZ, { roughness: 0.9 });
+  addSphere(world, 0.08, 0xc99a5b, bearX - 0.14, 1.34, bearZ, { roughness: 0.9 });
+  addSphere(world, 0.08, 0xc99a5b, bearX + 0.14, 1.34, bearZ, { roughness: 0.9 });
+  const [bx2, bz2] = P(shop, 2.2, 4.4);
+  bx(bx2, 0.18, bz2, 2.2, 0.36, 2.2, 0xff8a3d, { roughness: 0.6 });
+  for (let i = 0; i < 14; i++) {
+    const [px, pz] = P(shop, 2.2 - 0.9 + (i%4)*0.6, 4.4 - 0.9 + Math.floor(i/4)*0.6);
+    addSphere(world, 0.15, tc[i % tc.length], px, 0.44, pz, { roughness: 0.65 });
+  }
+}
+
+function merchHome(shop) {
+  const [sofaX, sofaZ] = P(shop, -1.4, 2.6);
+  bx(sofaX, 0.45, sofaZ, 2.6, 0.7, 1.0, 0x8a7a68, { roughness: 0.85 });
+  bx(sofaX, 1.05, sofaZ - 0.4, 2.6, 0.7, 0.25, 0x8a7a68, { roughness: 0.85 });
+  for (const d of [-1, 1]) bx(sofaX + d*1.2, 0.72, sofaZ, 0.25, 0.55, 1.0, 0x8a7a68,
+    { roughness: 0.85 });
+  const cc = [0xd9a06a, 0xa8c8a0, 0xc88a8a];
+  for (let i = 0; i < 3; i++) {
+    bx(sofaX - 0.8 + i*0.8, 0.85, sofaZ - 0.25, 0.5, 0.45, 0.18, cc[i], { roughness: 0.9 });
+  }
+  const [tx, tz] = P(shop, -1.4, 4.6);
+  bx(tx, 0.4, tz, 1.7, 0.1, 0.9, 0xc99a5b, { roughness: 0.6 });
+  bx(tx, 0.18, tz, 1.5, 0.36, 0.75, 0x8a6a4a, { roughness: 0.75 });
+  const [wx, wz] = P(shop, 2.7, 3.0);
+  bx(wx, 1.2, wz, 0.5, 2.4, 1.8, 0xd8c8b0, { roughness: 0.75 });
+}
+
+function merchFood(shop) {
+  const theme = shop.theme;
+  for (let i = 0; i < 3; i++) {
+    const [tx, tz] = P(shop, -2.2 + i*2.2, 3.0);
+    addCylinder(world, 0.6, 0.08, 0xc99a5b, tx, 0.76, tz, { roughness: 0.6 });
+    addCylinder(world, 0.07, 0.72, 0x6a6f78, tx, 0.36, tz, { roughness: 0.4, metalness: 0.6 });
+    addCylinder(world, 0.32, 0.06, 0x6a6f78, tx, 0.03, tz, { roughness: 0.4, metalness: 0.6 });
+    addCylinder(world, 0.25, 0.04, 0xc0392b, tx, 0.84, tz, { roughness: 0.5 });
+    for (let k = 0; k < 4; k++) {
+      const ang = (k/4)*Math.PI*2 + Math.PI/4;
+      const cxx = tx + Math.cos(ang)*0.95;
+      const czz = tz + Math.sin(ang)*0.95;
+      bx(cxx, 0.44, czz, 0.38, 0.06, 0.38, 0x8a5a3a, { roughness: 0.75 });
+      bx(cxx, 0.7, czz, 0.38, 0.45, 0.05, 0x8a5a3a, { roughness: 0.75, rotationY: ang });
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    const [lx, lz] = P(shop, -2.2 + i*1.8, 3.0);
+    bx(lx, 4.3, lz, 0.03, 0.85, 0.03, 0x3a2020, { roughness: 0.6 });
+    addSphere(world, 0.2, 0xc0392b, lx, 3.65, lz,
+      { emissive: 0xff4a3a, emissiveIntensity: 1.8, roughness: 0.7 });
+  }
+}
+
+function merchSony(shop) {
+  const SB = 0x0070d1;
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) {
+    const [tx, tz] = P(shop, -2.6 + c*2.6, 6.4);
+    const [fw, fh, fd] = D(shop, 0.1, 1.3, 2.0);
+    bx(tx, 1.9 + r*1.75, tz, fw, fh, fd, 0x0a0d10, { roughness: 0.3, metalness: 0.5 });
+    const [sx, sz] = P(shop, -2.6 + c*2.6, 6.3);
+    const [sw, sh, sd] = D(shop, 0.04, 1.15, 1.85);
+    bx(sx, 1.9 + r*1.75, sz, sw, sh, sd, r === 0 ? 0x1a4a6a : 0x2a1a3a,
+      { emissive: r === 0 ? SB : 0x8a4bff, emissiveIntensity: 1.2, roughness: 0.2, metalness: 0.3 });
+  }
+  const [px, pz] = P(shop, -1.8, 2.6);
+  bx(px, 0.5, pz, 2.0, 1.0, 1.2, 0x1a1e24, { roughness: 0.4, metalness: 0.5 });
+  bx(px, 1.02, pz, 2.1, 0.08, 1.3, SB,
+    { emissive: SB, emissiveIntensity: 0.8, roughness: 0.5, metalness: 0.3 });
+  for (let i = 0; i < 3; i++) {
+    const [hx, hz] = P(shop, -0.6 + i*0.5, 2.6);
+    addSphere(world, 0.08, 0xf0f0f0, hx, 1.14, hz, { roughness: 0.5, metalness: 0.2 });
+    bx(hx, 1.08, hz, 0.16, 0.04, 0.09, SB,
+      { emissive: SB, emissiveIntensity: 1.2, roughness: 0.4 });
+  }
+}
+
+function buildMerchandise(shop) {
+  switch (shop.id) {
+    case "fashion": merchFashion(shop); break;
+    case "dji":     merchDJI(shop); break;
+    case "coffee":  merchCoffee(shop); break;
+    case "apple":   merchApple(shop); break;
+    case "sports":  merchSports(shop); break;
+    case "books":   merchBooks(shop); break;
+    case "beauty":  merchBeauty(shop); break;
+    case "jewelry": merchJewelry(shop); break;
+    case "kids":    merchKids(shop); break;
+    case "home":    merchHome(shop); break;
+    case "food":    merchFood(shop); break;
+    case "sony":    merchSony(shop); break;
+  }
+}
+
+for (const shop of SHOP_DEFS) {
+  buildShop(shop);
+  buildMerchandise(shop);
+}
+
+/* 四角封闭 */
+const CORNERS = [
+  { x0: MALL.x0, x1: ATRIUM.x0, z0: MALL.z0, z1: ATRIUM.z0 },
+  { x0: ATRIUM.x1, x1: MALL.x1, z0: MALL.z0, z1: ATRIUM.z0 },
+  { x0: MALL.x0, x1: ATRIUM.x0, z0: ATRIUM.z1, z1: MALL.z1 },
+  { x0: ATRIUM.x1, x1: MALL.x1, z0: ATRIUM.z1, z1: MALL.z1 },
+];
+for (const c of CORNERS) {
+  const cx = (c.x0 + c.x1)/2, cz = (c.z0 + c.z1)/2;
+  const w = c.x1 - c.x0, d = c.z1 - c.z0;
+  bx(cx, 2.85, cz, w, 5.7, d, 0x2a3038, { roughness: 0.92, metalness: 0.05 });
+  bx(cx, FLOOR2_Y + 2.5, cz, w, 5.0, d, 0x252a34, { roughness: 0.92, metalness: 0.05 });
+  addCollider(c.x0, c.x1, c.z0, c.z1);
+}
+addCollider(MALL.x0 - 0.5, MALL.x0 + 0.2, MALL.z0 - 0.5, MALL.z1 + 0.5);
+addCollider(MALL.x1 - 0.2, MALL.x1 + 0.5, MALL.z0 - 0.5, MALL.z1 + 0.5);
+addCollider(MALL.x0 - 0.5, MALL.x1 + 0.5, MALL.z0 - 0.5, MALL.z0 + 0.2);
+addCollider(MALL.x0 - 0.5, MALL.x1 + 0.5, MALL.z1 - 0.2, MALL.z1 + 0.5);
+
+/* =========================================================
+   9. 中庭装饰
+   ========================================================= */
+function buildFountain(cx, cz) {
+  addCylinder(world, 3.0, 0.5, 0xd8d2c6, cx, 0.25, cz, { roughness: 0.55, metalness: 0.18 });
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x4ab8e8, roughness: 0.08, metalness: 0.35,
+    transparent: true, opacity: 0.72, envMapIntensity: 1.2,
+  });
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(2.7, 2.7, 0.1, 40), waterMat);
+  water.position.set(cx, 0.55, cz);
+  world.add(water);
+  addCylinder(world, 0.6, 1.4, 0xe8e2d6, cx, 1.1, cz, { roughness: 0.5, metalness: 0.25 });
+  addCylinder(world, 1.6, 0.2, 0xd8d2c6, cx, 1.85, cz, { roughness: 0.5, metalness: 0.25 });
+  addCylinder(world, 0.8, 0.15, 0xd8d2c6, cx, 2.5, cz, { roughness: 0.5, metalness: 0.25 });
+  addSphere(world, 0.4, 0x35e0ff, cx, 3.0, cz,
+    { emissive: 0x35e0ff, emissiveIntensity: 1.5, roughness: 0.3, metalness: 0.4 });
+  for (let i = 0; i < 8; i++) {
+    const ang = (i/8)*Math.PI*2;
+    const lx = cx + Math.cos(ang)*2.4, lz = cz + Math.sin(ang)*2.4;
+    addSphere(world, 0.13, 0xfff4d0, lx, 0.6, lz,
+      { emissive: 0xffe8a0, emissiveIntensity: 2.2, roughness: 0.6 });
+  }
+  addCylinder(world, 3.05, 0.08, 0x35e0ff, cx, 0.52, cz,
+    { emissive: 0x35e0ff, emissiveIntensity: 1.4, roughness: 0.4, metalness: 0.3 });
+  addCollider(cx - 3.15, cx + 3.15, cz - 3.15, cz + 3.15);
+
+  const particles = [];
+  const particleCount = 42;
+  for (let i = 0; i < particleCount; i++) {
+    const dropMat = new THREE.MeshStandardMaterial({
+      color: 0xbfe8ff, emissive: 0x4ab8e8, emissiveIntensity: 0.8,
+      roughness: 0.05, metalness: 0.3,
+      transparent: true, opacity: 0.9,
+    });
+    const dropMesh = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), dropMat);
+    dropMesh.visible = false;
+    world.add(dropMesh);
+    particles.push({
+      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+      life: Math.random() * 1.5, maxLife: 1 + Math.random() * 0.8,
+      mesh: dropMesh,
+    });
+  }
+
+  const jetMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.14, 2.2, 12, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: 0x8fd4ff, emissive: 0x4ab8e8, emissiveIntensity: 0.6,
+      transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  jetMesh.position.set(cx, 2.4, cz);
+  world.add(jetMesh);
+
+  const ringMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.4, 1.0, 0.6, 24, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: 0xbfe8ff, emissive: 0x4ab8e8, emissiveIntensity: 0.5,
+      transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false,
+    })
+  );
+  ringMesh.position.set(cx, 2.9, cz);
+  world.add(ringMesh);
+
+  return { cx, cz, particles, jet: jetMesh, ring: ringMesh };
+}
+const fountain = buildFountain(0, 0);
+
+function updateFountain(dt, time) {
+  const f = fountain;
+  if (f.jet) {
+    f.jet.scale.y = 1 + Math.sin(time*3.2)*0.14;
+    f.jet.material.opacity = 0.28 + Math.sin(time*4.1)*0.1;
+  }
+  if (f.ring) {
+    const s = 1 + Math.sin(time*2.4)*0.18;
+    f.ring.scale.set(s, 1 + Math.sin(time*2.4+1)*0.25, s);
+    f.ring.material.opacity = 0.18 + Math.sin(time*3.6)*0.1;
+  }
+  for (const p of f.particles) {
+    p.life += dt;
+    if (p.life > p.maxLife) {
+      p.life = 0;
+      p.maxLife = 0.9 + Math.random() * 0.9;
+      const ang = Math.random() * Math.PI * 2;
+      const speed = 1.5 + Math.random() * 1.6;
+      p.x = f.cx; p.y = 3.0; p.z = f.cz;
+      p.vx = Math.cos(ang)*speed*(0.5 + Math.random()*0.5);
+      p.vy = 2.8 + Math.random()*1.4;
+      p.vz = Math.sin(ang)*speed*(0.5 + Math.random()*0.5);
+      p.mesh.visible = true;
+    }
+    p.vy -= 9.8*dt;
+    p.x += p.vx*dt; p.y += p.vy*dt; p.z += p.vz*dt;
+    if (p.y < 0.6) { p.mesh.visible = false; p.life = p.maxLife + 1; continue; }
+    p.mesh.position.set(p.x, p.y, p.z);
+    const t = p.life / p.maxLife;
+    p.mesh.scale.setScalar(0.9 + Math.sin(t*Math.PI)*0.4);
+  }
+}
+
+const ATRIUM_COLUMNS = [[-9, -6], [9, -6], [-9, 6], [9, 6]];
+for (let i = 0; i < ATRIUM_COLUMNS.length; i++) {
+  const [x, z] = ATRIUM_COLUMNS[i];
+  addCylinder(world, 0.5, FLOOR2_Y, 0xece6da, x, FLOOR2_Y/2, z,
+    { roughness: 0.24, metalness: 0.3 });
+  addCylinder(world, 0.45, TOP_H - FLOOR2_Y, 0xece6da, x, FLOOR2_Y + (TOP_H - FLOOR2_Y)/2, z,
+    { roughness: 0.24, metalness: 0.3 });
+  const accent = ACCENT_COLORS[i % ACCENT_COLORS.length];
+  addCylinder(world, 0.56, 0.22, accent, x, 3.6, z,
+    { emissive: accent, emissiveIntensity: 2.6, roughness: 0.5, metalness: 0.2 });
+  addCylinder(world, 0.56, 0.16, accent, x, 1.4, z,
+    { emissive: accent, emissiveIntensity: 1.5, roughness: 0.5, metalness: 0.2 });
+  addCylinder(world, 0.51, 0.18, accent, x, FLOOR2_Y + 1.6, z,
+    { emissive: accent, emissiveIntensity: 2.2, roughness: 0.5, metalness: 0.2 });
+  addCylinder(world, 0.62, 0.4, 0x2a303c, x, 0.2, z, { roughness: 0.55, metalness: 0.45 });
+  addCollider(x - 0.62, x + 0.62, z - 0.62, z + 0.62);
+}
+
+const LEAF_COLORS = [0x3fae5a, 0x2f9c4c, 0x57c46f];
+function addPlanter(x, z) {
+  addCylinder(world, 0.75, 0.6, 0xd8d2c6, x, 0.3, z, { roughness: 0.6, metalness: 0.16 });
+  addCylinder(world, 0.6, 0.1, 0x4a3a2c, x, 0.65, z, { roughness: 1.0 });
+  addCylinder(world, 0.11, 1.6, 0x6b4f36, x, 1.5, z, { roughness: 0.95 });
+  for (let i = 0; i < 3; i++) {
+    const scale = 1.5 - i*0.34;
+    const crown = new THREE.Mesh(GEO_SPHERE,
+      getMaterial(LEAF_COLORS[i % LEAF_COLORS.length], { roughness: 0.92, metalness: 0.0 }));
+    crown.scale.set(scale, scale*0.85, scale);
+    crown.position.set(x + (i-1)*0.26, 2.3 + i*0.5, z + (i-1)*0.2);
+    world.add(crown);
+  }
+  addCollider(x - 0.8, x + 0.8, z - 0.8, z + 0.8);
+}
+
+for (const p of [[-12, -7], [-3, -7], [3, -7], [12, -7], [-12, 7], [12, 7]]) {
+  addPlanter(p[0], p[1]);
+}
+
+function addBench(x, z, rotY) {
+  const [w, h, d] = rotY ? [0.62, 0.14, 2.4] : [2.4, 0.14, 0.62];
+  bx(x, 0.47, z, w, h, d, 0xc99a5b, { roughness: 0.75, metalness: 0.05 });
+  for (const dd of [-1, 1]) {
+    const dxv = rotY ? 0 : dd*0.95;
+    const dzv = rotY ? dd*0.95 : 0;
+    const [lw, lh, ld] = rotY ? [0.56, 0.47, 0.16] : [0.16, 0.47, 0.56];
+    bx(x + dxv, 0.235, z + dzv, lw, lh, ld, 0x8a8f99, { roughness: 0.4, metalness: 0.6 });
+  }
+  addCollider(x - 1.3, x + 1.3, z - 0.5, z + 0.5);
+}
+
+for (const b of [[-3.5,-7,false],[3.5,-7,false],[-3.5,7,false],[3.5,7,false],[-13,0,true],[13,0,true]]) {
+  addBench(b[0], b[1], b[2]);
+}
+
+function addAdColumn(x, z) {
+  addCylinder(world, 0.5, 2.6, 0x2a3140, x, 1.3, z, { roughness: 0.35, metalness: 0.65 });
+  const rc = [0xff5fa2, 0x35e0ff, 0xffc93c];
+  for (let i = 0; i < 3; i++) {
+    addCylinder(world, 0.53, 0.5, rc[i], x, 0.6 + i*0.8, z,
+      { emissive: rc[i], emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.2 });
+  }
+  addSphere(world, 0.32, 0xffffff, x, 2.85, z,
+    { emissive: 0xfff2dd, emissiveIntensity: 2.2, roughness: 0.6, metalness: 0.1 });
+  addCollider(x - 0.55, x + 0.55, z - 0.55, z + 0.55);
+}
+addAdColumn(-8, -3); addAdColumn(8, -3); addAdColumn(-8, 3); addAdColumn(8, 3);
+
+function addTrashBin(x, z) {
+  addCylinder(world, 0.26, 0.82, 0x4a5260, x, 0.41, z, { roughness: 0.5, metalness: 0.45 });
+  addCylinder(world, 0.3, 0.08, 0x2c333f, x, 0.84, z, { roughness: 0.45, metalness: 0.55 });
+  addCylinder(world, 0.27, 0.1, 0x35e0ff, x, 0.72, z,
+    { emissive: 0x35e0ff, emissiveIntensity: 1.2, roughness: 0.55, metalness: 0.2 });
+  addCollider(x - 0.3, x + 0.3, z - 0.3, z + 0.3);
+}
+addTrashBin(-14, -8); addTrashBin(14, -8); addTrashBin(-14, 8); addTrashBin(14, 8);
+
+bx(0, 0.012, -9.2, 26, 0.02, 0.14, 0xffc93c,
+  { emissive: 0xffc93c, emissiveIntensity: 0.7, roughness: 0.7 });
+bx(0, 0.012, 9.2, 26, 0.02, 0.14, 0x35e0ff,
+  { emissive: 0x35e0ff, emissiveIntensity: 0.7, roughness: 0.7 });
+bx(-14.4, 0.012, 0, 0.14, 0.02, 18, 0x6cff9e,
+  { emissive: 0x6cff9e, emissiveIntensity: 0.7, roughness: 0.7 });
+bx(14.4, 0.012, 0, 0.14, 0.02, 18, 0xff5fa2,
+  { emissive: 0xff5fa2, emissiveIntensity: 0.7, roughness: 0.7 });
+
+/* 二层店铺 */
+const FLOOR2_THEMES = [
+  { wall: 0xf2b8c6, sign: 0xff3d7f, font: '"STKaiti","KaiTi","Songti SC",serif',
+    textColor: "#ffffff", glowColor: "#ff9ec4" },
+  { wall: 0x2a3038, sign: 0x101418, font: '"Arial Black","Impact",sans-serif',
+    textColor: "#ffffff", glowColor: "#00d4ff" },
+  { wall: 0xf5d99a, sign: 0xb5651d, font: '"Georgia","Times New Roman",serif',
+    textColor: "#fff6e0", glowColor: "#ffb347" },
+  { wall: 0xabe3b4, sign: 0x24c46b, font: '"Impact","Arial Black",sans-serif',
+    textColor: "#ffffff", glowColor: "#7dffb0" },
+  { wall: 0xcbb6f0, sign: 0x8a4bff, font: '"Didot","Bodoni MT",serif',
+    textColor: "#ffffff", glowColor: "#d9a6ff" },
+  { wall: 0xf3b9a0, sign: 0xff6a3d, font: '"Bodoni MT","Didot",serif',
+    textColor: "#fff4d8", glowColor: "#ffd166" },
+];
+const FLOOR2_SHOP_NAMES = ["咖啡 · 书吧", "影院 · IMAX", "健身 · YOGA", "美食 · 广场",
+  "数码 · 索尼", "儿童 · 乐园", "家居 · 生活", "时尚 · 服饰"];
+
+function buildSecondFloorShop(cx, cz, w, d, face, theme, name) {
+  if (face === "north") bx(cx, FLOOR2_Y + 2.8, cz - d/2 + 0.2, w, 5.2, 0.3, theme.wall,
+    { roughness: 0.9 });
+  else if (face === "south") bx(cx, FLOOR2_Y + 2.8, cz + d/2 - 0.2, w, 5.2, 0.3, theme.wall,
+    { roughness: 0.9 });
+  else if (face === "east") bx(cx + d/2 - 0.2, FLOOR2_Y + 2.8, cz, 0.3, 5.2, w, theme.wall,
+    { roughness: 0.9 });
+  else bx(cx - d/2 + 0.2, FLOOR2_Y + 2.8, cz, 0.3, 5.2, w, theme.wall, { roughness: 0.9 });
+
+  let gx = cx, gz = cz, gw = w, gd = 0.1;
+  if (face === "north") gz = cz - d/2 + 0.35;
+  else if (face === "south") gz = cz + d/2 - 0.35;
+  else if (face === "east") { gx = cx + d/2 - 0.35; gw = 0.1; gd = w; }
+  else { gx = cx - d/2 + 0.35; gw = 0.1; gd = w; }
+  bx(gx, FLOOR2_Y + 1.6, gz, gw, 2.8, gd, 0xbfe4ff,
+    { roughness: 0.05, metalness: 0.66, opacity: 0.28 });
+
+  const nameTex = makeTextTexture(name, {
+    width: 1024, height: 256,
+    color: theme.textColor, glow: theme.glowColor,
+    stroke: "rgba(0,0,0,0.4)", fontSize: 130, font: theme.font,
+  });
+  const nameMat = makeSignMaterial(nameTex, 1.7);
+  const signPlane = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w*0.7, 4.5), 1.2), nameMat);
+
+  let sx = gx, sz = gz;
+  if (face === "north") { sz = cz - d/2 + 0.5; signPlane.rotation.y = 0; }
+  else if (face === "south") { sz = cz + d/2 - 0.5; signPlane.rotation.y = Math.PI; }
+  else if (face === "east") { sx = cx + d/2 - 0.5; signPlane.rotation.y = Math.PI/2; }
+  else { sx = cx - d/2 + 0.5; signPlane.rotation.y = -Math.PI/2; }
+  signPlane.position.set(sx, FLOOR2_Y + 3.5, sz);
+  world.add(signPlane);
+}
+
+for (let i = 0; i < 4; i++) {
+  const cx = -11.25 + i*7.5;
+  const theme = FLOOR2_THEMES[i % FLOOR2_THEMES.length];
+  buildSecondFloorShop(cx, (MALL.z0 + ATRIUM.z0)/2, 7.0, 6.4, "north", theme, FLOOR2_SHOP_NAMES[i]);
+}
+for (let i = 0; i < 4; i++) {
+  const cx = -11.25 + i*7.5;
+  const theme = FLOOR2_THEMES[(i+2) % FLOOR2_THEMES.length];
+  buildSecondFloorShop(cx, (MALL.z1 + ATRIUM.z1)/2, 7.0, 6.4, "south", theme,
+    FLOOR2_SHOP_NAMES[i+4]);
+}
+
+/* =========================================================
+   10. 巡逻机器人
+   ========================================================= */
+const ROBOT_HOME_X = -10, ROBOT_HOME_Z = 0, ROBOT_HOME_HEADING = Math.PI / 2;
+const ROBOT_CAM_HEIGHT = 0.74;
+
+const robot = {
+  x: ROBOT_HOME_X, z: ROBOT_HOME_Z,
+  heading: ROBOT_HOME_HEADING,
+  camYaw: 0, camPitch: 0,
+  speed: 0,
+  selected: false,
+  radius: 0.5,
+  zoom: 1.0,
+  group: new THREE.Group(),
+  camGroup: new THREE.Group(),
+  ledMat: null,
+  wheelMeshes: [],
+};
+
+function buildRobotMesh() {
+  const g = robot.group;
+  const bodyMat = getMaterial(0x2a3540, { roughness: 0.45, metalness: 0.6 });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.26, 0.85), bodyMat);
+  body.position.y = 0.30;
+  g.add(body);
+
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.14), bodyMat);
+  nose.position.set(0, 0.30, 0.44);
+  g.add(nose);
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.09, 0.72),
+    getMaterial(0x1a2228, { roughness: 0.35, metalness: 0.7 }));
+  top.position.y = 0.475;
+  g.add(top);
+
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.02, 0.16),
+    getMaterial(0xffb347, { emissive: 0xffb347, emissiveIntensity: 1.6, roughness: 0.5, metalness: 0.3 }));
+  stripe.position.set(0, 0.525, 0.16);
+  g.add(stripe);
+
+  const wheelGeo = new THREE.CylinderGeometry(0.10, 0.10, 0.065, 16);
+  const wheelMat = getMaterial(0x0a0d10, { roughness: 0.9, metalness: 0.1 });
+  for (const dx of [-0.3, 0.3]) for (const dz of [-0.28, 0.28]) {
+    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel.rotation.z = Math.PI/2;
+    wheel.position.set(dx, 0.10, dz);
+    g.add(wheel);
+    robot.wheelMeshes.push(wheel);
+
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.068, 12),
+      getMaterial(0x8a9099, { roughness: 0.4, metalness: 0.7 }));
+    hub.rotation.z = Math.PI/2;
+    hub.position.set(dx, 0.10, dz);
+    g.add(hub);
+  }
+
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 0.30, 12),
+    getMaterial(0x3a4550, { roughness: 0.4, metalness: 0.7 }));
+  pole.position.y = 0.59;
+  g.add(pole);
+
+  const mountBase = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.05, 16),
+    getMaterial(0x2a3038, { roughness: 0.35, metalness: 0.75 }));
+  mountBase.position.y = 0.755;
+  g.add(mountBase);
+
+  robot.camGroup.position.set(0, ROBOT_CAM_HEIGHT, 0);
+  g.add(robot.camGroup);
+
+  const camBase = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 14),
+    getMaterial(0x1a2028, { roughness: 0.3, metalness: 0.75 }));
+  camBase.position.set(0, 0, 0);
+  robot.camGroup.add(camBase);
+
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.10, 16),
+    getMaterial(0x05080a, { roughness: 0.15, metalness: 0.85 }));
+  lens.rotation.x = Math.PI/2;
+  lens.position.set(0, 0, 0.10);
+  robot.camGroup.add(lens);
+
+  const lensGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.008, 16),
+    getMaterial(0x1a3a5a, { emissive: 0x4aa8ff, emissiveIntensity: 1.4, roughness: 0.1, metalness: 0.6 }));
+  lensGlass.rotation.x = Math.PI/2;
+  lensGlass.position.set(0, 0, 0.155);
+  robot.camGroup.add(lensGlass);
+
+  const lensRing = new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.008, 8, 24),
+    getMaterial(0x6cff9e, { emissive: 0x6cff9e, emissiveIntensity: 1.8, roughness: 0.4, metalness: 0.3 }));
+  lensRing.position.set(0, 0, 0.12);
+  robot.camGroup.add(lensRing);
+
+  for (const dx of [-0.095, 0.095]) {
+    const ear = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.05),
+      getMaterial(0x2a3540, { roughness: 0.5, metalness: 0.6 }));
+    ear.position.set(dx, 0, -0.02);
+    robot.camGroup.add(ear);
+  }
+
+  for (const dx of [-0.17, 0.17]) {
+    const ledMat = getMaterial(0xfff4d0, { emissive: 0xfff4d0, emissiveIntensity: 2.4, roughness: 0.4 });
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.038, 12, 8), ledMat);
+    led.position.set(dx, 0.30, 0.46);
+    g.add(led);
+  }
+
+  const statusMat = getMaterial(0x4ee6a8, { emissive: 0x4ee6a8, emissiveIntensity: 2.5, roughness: 0.4 });
+  const statusLed = new THREE.Mesh(new THREE.SphereGeometry(0.032, 12, 8), statusMat);
+  statusLed.position.set(0, 0.51, -0.40);
+  g.add(statusLed);
+  robot.ledMat = statusMat;
+}
+
+buildRobotMesh();
+robot.group.position.set(robot.x, 0, robot.z);
+robot.group.rotation.y = robot.heading;
+world.add(robot.group);
+
+/* =========================================================
+   11. 巡逻无人机
+   ========================================================= */
+const DRONE_HOME_X = -8, DRONE_HOME_Y = 4.0, DRONE_HOME_Z = -5;
+const DRONE_HOME_HEADING = 0;
+const DRONE_CAM_HEIGHT_OFFSET = -0.15;
+
+const drone = {
+  x: DRONE_HOME_X, y: DRONE_HOME_Y, z: DRONE_HOME_Z,
+  heading: DRONE_HOME_HEADING,
+  camYaw: 0, camPitch: -0.15,
+  forwardSpeed: 0,
+  vy: 0,
+  selected: false,
+  radius: 0.45,
+  zoom: 1.0,
+  group: new THREE.Group(),
+  camGroup: new THREE.Group(),
+  rotorMeshes: [],
+  ledMat: null,
+};
+
+function buildDroneMesh() {
+  const g = drone.group;
+
+  const bodyMat = getMaterial(0x1a2430, { roughness: 0.4, metalness: 0.7 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.42), bodyMat);
+  body.position.y = 0;
+  g.add(body);
+
+  const topMat = getMaterial(0x2a3644, { roughness: 0.35, metalness: 0.75 });
+  const topPlate = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.32), topMat);
+  topPlate.position.y = 0.09;
+  g.add(topPlate);
+
+  const stripeMat = getMaterial(0x6cd0ff,
+    { emissive: 0x6cd0ff, emissiveIntensity: 2.0, roughness: 0.5, metalness: 0.3 });
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.015, 0.06), stripeMat);
+  stripe.position.set(0, 0.115, 0);
+  g.add(stripe);
+
+  const armLen = 0.42;
+  const armMat = getMaterial(0x1a1e26, { roughness: 0.5, metalness: 0.6 });
+
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const ex = sx * armLen * 0.75;
+    const ez = sz * armLen * 0.75;
+    const dxv = ex, dzv = ez;
+    const len = Math.sqrt(dxv*dxv + dzv*dzv);
+
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(len, 0.03, 0.05), armMat);
+    arm.position.set(ex / 2, 0, ez / 2);
+    arm.rotation.y = Math.atan2(-dzv, dxv);
+    g.add(arm);
+
+    const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 12),
+      getMaterial(0x22262c, { roughness: 0.4, metalness: 0.7 }));
+    motor.position.set(ex, 0.04, ez);
+    g.add(motor);
+
+    const rotorGroup = new THREE.Group();
+    rotorGroup.position.set(ex, 0.075, ez);
+
+    for (const d of [0, Math.PI / 2]) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.008, 0.045),
+        getMaterial(0x4a5560, { roughness: 0.6, metalness: 0.4 }));
+      blade.rotation.y = d;
+      rotorGroup.add(blade);
+    }
+
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.015, 8),
+      getMaterial(0x8a9099, { roughness: 0.3, metalness: 0.8 }));
+    cap.position.y = 0.012;
+    rotorGroup.add(cap);
+
+    g.add(rotorGroup);
+    drone.rotorMeshes.push(rotorGroup);
+
+    const ledMat = getMaterial(0x6cd0ff,
+      { emissive: 0x6cd0ff, emissiveIntensity: 1.8, roughness: 0.5 });
+    const tipLed = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), ledMat);
+    tipLed.position.set(ex + sx*0.14, 0.075, ez);
+    g.add(tipLed);
+  }
+
+  const hangPole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.10, 10),
+    getMaterial(0x2a3644, { roughness: 0.4, metalness: 0.7 }));
+  hangPole.position.y = -0.12;
+  g.add(hangPole);
+
+  drone.camGroup.position.set(0, DRONE_CAM_HEIGHT_OFFSET, 0);
+  g.add(drone.camGroup);
+
+  const camMount = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.04, 14),
+    getMaterial(0x1a2028, { roughness: 0.35, metalness: 0.75 }));
+  drone.camGroup.add(camMount);
+
+  const camBase = new THREE.Mesh(new THREE.SphereGeometry(0.085, 20, 14),
+    getMaterial(0x101820, { roughness: 0.3, metalness: 0.8 }));
+  camBase.position.set(0, -0.05, 0);
+  drone.camGroup.add(camBase);
+
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.08, 14),
+    getMaterial(0x05080a, { roughness: 0.15, metalness: 0.85 }));
+  lens.rotation.x = Math.PI / 2;
+  lens.position.set(0, -0.05, 0.085);
+  drone.camGroup.add(lens);
+
+  const lensGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.006, 14),
+    getMaterial(0x1a3a5a, { emissive: 0x6cd0ff, emissiveIntensity: 1.6, roughness: 0.1, metalness: 0.6 }));
+  lensGlass.rotation.x = Math.PI / 2;
+  lensGlass.position.set(0, -0.05, 0.13);
+  drone.camGroup.add(lensGlass);
+
+  const lensRing = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.007, 8, 20),
+    getMaterial(0x6cd0ff, { emissive: 0x6cd0ff, emissiveIntensity: 1.8, roughness: 0.4, metalness: 0.3 }));
+  lensRing.position.set(0, -0.05, 0.10);
+  drone.camGroup.add(lensRing);
+
+  const statusMat = getMaterial(0x6cff9e,
+    { emissive: 0x6cff9e, emissiveIntensity: 2.5, roughness: 0.4 });
+  const statusLed = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), statusMat);
+  statusLed.position.set(0, -0.14, 0);
+  g.add(statusLed);
+  drone.ledMat = statusMat;
+}
+
+buildDroneMesh();
+drone.group.position.set(drone.x, drone.y, drone.z);
+drone.group.rotation.y = drone.heading;
+world.add(drone.group);
+
+/* 碰撞检测 */
+function collidesAt(x, z, r) {
+  for (let i = 0; i < colliders.length; i++) {
+    const c = colliders[i];
+    const nx = clamp(x, c.minX, c.maxX);
+    const nz = clamp(z, c.minZ, c.maxZ);
+    const dx = x - nx, dz = z - nz;
+    if (dx*dx + dz*dz < r*r) return true;
+  }
+  return false;
+}
+
+const ROBOT_MAX_SPEED = 3.0;
+const ROBOT_ACCEL = 5.5;
+const ROBOT_TURN_SPEED = 2.2;
+const ROBOT_CAM_TURN = 1.7;
+
+const DRONE_MAX_SPEED = 4.0;
+const DRONE_ACCEL = 4.0;
+const DRONE_TURN_SPEED = 1.8;
+const DRONE_CAM_TURN = 1.6;
+const DRONE_VERTICAL_SPEED = 2.5;
+const DRONE_MIN_Y = 1.2;
+const DRONE_MAX_Y = TOP_H - 0.8;
+
+function updateRobot(dt, time) {
+  if (!robot.selected) {
+    robot.speed *= Math.exp(-dt * 3.5);
+  } else {
+    if (keys.w) robot.speed = Math.min(ROBOT_MAX_SPEED, robot.speed + ROBOT_ACCEL * dt);
+    else if (keys.s) robot.speed = Math.max(-ROBOT_MAX_SPEED * 0.6, robot.speed - ROBOT_ACCEL * dt);
+    else robot.speed *= Math.exp(-dt * 2.5);
+
+    if (keys.a) robot.heading += ROBOT_TURN_SPEED * dt;
+    if (keys.d) robot.heading -= ROBOT_TURN_SPEED * dt;
+
+    if (keys.arrowUp) robot.camPitch = clamp(robot.camPitch + ROBOT_CAM_TURN * dt, -0.85, 0.85);
+    if (keys.arrowDown) robot.camPitch = clamp(robot.camPitch - ROBOT_CAM_TURN * dt, -0.85, 0.85);
+    if (keys.arrowLeft) robot.camYaw += ROBOT_CAM_TURN * dt;
+    if (keys.arrowRight) robot.camYaw -= ROBOT_CAM_TURN * dt;
+  }
+
+  if (Math.abs(robot.speed) > 0.001) {
+    const dx = Math.sin(robot.heading) * robot.speed * dt;
+    const dz = Math.cos(robot.heading) * robot.speed * dt;
+    const nx = robot.x + dx, nz = robot.z + dz;
+
+    if (!collidesAt(nx, nz, robot.radius)) {
+      robot.x = nx; robot.z = nz;
+      const ws = robot.speed * dt * 8;
+      for (const w of robot.wheelMeshes) w.rotation.x += ws;
+    } else {
+      if (!collidesAt(nx, robot.z, robot.radius)) { robot.x = nx; robot.speed *= 0.5; }
+      else if (!collidesAt(robot.x, nz, robot.radius)) { robot.z = nz; robot.speed *= 0.5; }
+      else robot.speed = 0;
+    }
+  }
+
+  robot.group.position.set(robot.x, 0, robot.z);
+  robot.group.rotation.y = robot.heading;
+  robot.camGroup.rotation.y = robot.camYaw;
+  robot.camGroup.rotation.x = robot.camPitch;
+
+  if (robot.ledMat) robot.ledMat.emissiveIntensity = 1.8 + Math.sin(time * 4) * 0.9;
+}
+
+function updateDrone(dt, time) {
+  if (!drone.selected) {
+    drone.forwardSpeed *= Math.exp(-dt * 3.0);
+    drone.vy *= Math.exp(-dt * 3.0);
+    drone.y = lerp(drone.y, DRONE_HOME_Y + Math.sin(time * 1.2) * 0.05, dt * 2);
+  } else {
+    if (keys.w) drone.forwardSpeed = Math.min(DRONE_MAX_SPEED, drone.forwardSpeed + DRONE_ACCEL * dt);
+    else if (keys.s) drone.forwardSpeed = Math.max(-DRONE_MAX_SPEED * 0.6, drone.forwardSpeed - DRONE_ACCEL * dt);
+    else drone.forwardSpeed *= Math.exp(-dt * 2.5);
+
+    if (keys.a) drone.heading += DRONE_TURN_SPEED * dt;
+    if (keys.d) drone.heading -= DRONE_TURN_SPEED * dt;
+
+    if (keys.space) drone.vy = DRONE_VERTICAL_SPEED;
+    else if (keys.shift) drone.vy = -DRONE_VERTICAL_SPEED;
+    else drone.vy *= Math.exp(-dt * 4.0);
+
+    if (keys.arrowUp) drone.camPitch = clamp(drone.camPitch + DRONE_CAM_TURN * dt, -1.2, 0.7);
+    if (keys.arrowDown) drone.camPitch = clamp(drone.camPitch - DRONE_CAM_TURN * dt, -1.2, 0.7);
+    if (keys.arrowLeft) drone.camYaw += DRONE_CAM_TURN * dt;
+    if (keys.arrowRight) drone.camYaw -= DRONE_CAM_TURN * dt;
+  }
+
+  const dx = Math.sin(drone.heading) * drone.forwardSpeed * dt;
+  const dz = Math.cos(drone.heading) * drone.forwardSpeed * dt;
+  drone.x = clamp(drone.x + dx, MALL.x0 + 1, MALL.x1 - 1);
+  drone.z = clamp(drone.z + dz, MALL.z0 + 1, MALL.z1 - 1);
+
+  drone.y = clamp(drone.y + drone.vy * dt, DRONE_MIN_Y, DRONE_MAX_Y);
+
+  drone.group.position.set(drone.x, drone.y, drone.z);
+  drone.group.rotation.y = drone.heading;
+  drone.group.rotation.x = -drone.forwardSpeed * 0.04;
+  drone.group.rotation.z = 0;
+
+  drone.camGroup.rotation.y = drone.camYaw;
+  drone.camGroup.rotation.x = drone.camPitch;
+
+  const spin = (8 + Math.abs(drone.forwardSpeed) * 1.5) * dt;
+  for (let i = 0; i < drone.rotorMeshes.length; i++) {
+    drone.rotorMeshes[i].rotation.y += spin * (i % 2 === 0 ? 1 : -1);
+  }
+
+  if (drone.ledMat) drone.ledMat.emissiveIntensity = 1.8 + Math.sin(time * 6) * 1.0;
+}
+
+function resetRobot() {
+  robot.x = ROBOT_HOME_X; robot.z = ROBOT_HOME_Z;
+  robot.heading = ROBOT_HOME_HEADING;
+  robot.camYaw = 0; robot.camPitch = 0;
+  robot.speed = 0; robot.zoom = 1.0;
+  robot.group.position.set(robot.x, 0, robot.z);
+  robot.group.rotation.y = robot.heading;
+  robot.camGroup.rotation.y = 0;
+  robot.camGroup.rotation.x = 0;
+  if (robotZoomValueEl) robotZoomValueEl.textContent = "×1.0";
+}
+
+function resetDrone() {
+  drone.x = DRONE_HOME_X; drone.y = DRONE_HOME_Y; drone.z = DRONE_HOME_Z;
+  drone.heading = DRONE_HOME_HEADING;
+  drone.camYaw = 0; drone.camPitch = -0.15;
+  drone.forwardSpeed = 0; drone.vy = 0; drone.zoom = 1.0;
+  drone.group.position.set(drone.x, drone.y, drone.z);
+  drone.group.rotation.set(0, drone.heading, 0);
+  drone.camGroup.rotation.y = 0;
+  drone.camGroup.rotation.x = drone.camPitch;
+  if (droneZoomValueEl) droneZoomValueEl.textContent = "×1.0";
+}
+
+/* =========================================================
+   12. 人物系统
+   ========================================================= */
+const CROWD_COLORS = [0x4f7bff, 0xff5d5d, 0x35c98a, 0xffc233, 0xb46bff,
+  0xff8a3d, 0x39d7ff, 0xff6fae, 0x8ce65a, 0xf2f2f2, 0x2b3a55, 0xd94f8a, 0x5d6ad9];
+const HAIR_COLORS = [0x1a1210, 0x2b1d14, 0x3d2817, 0x54371f, 0x6b4a2f, 0x8a5a3a, 0xc9a06a, 0xe8d5b0];
+const SKIN_COLORS = [0xefc9a6, 0xe8b98e, 0xd9a173, 0xc48a5e, 0xf2d6b8, 0xa9754c];
+const PANTS_COLORS = [0x2c3344, 0x3a3f4d, 0x4a4e5c, 0x263040, 0x5a5148];
+
+const GEO_LEG = new THREE.CapsuleGeometry(0.078, 0.62, 4, 10);
+GEO_LEG.translate(0, -0.39, 0);
+const GEO_ARM = new THREE.CapsuleGeometry(0.058, 0.38, 4, 10);
+GEO_ARM.translate(0, -0.25, 0);
+const GEO_TORSO_M = new THREE.CapsuleGeometry(0.185, 0.30, 6, 14);
+const GEO_TORSO_F = new THREE.CapsuleGeometry(0.152, 0.28, 6, 14);
+const GEO_HEAD = new THREE.SphereGeometry(0.128, 16, 12);
+const GEO_HAIR_SHORT = new THREE.SphereGeometry(0.140, 16, 12);
+const GEO_HAIR_LONG = new THREE.CapsuleGeometry(0.105, 0.20, 4, 12);
+const GEO_SKIRT = new THREE.CylinderGeometry(0.165, 0.235, 0.36, 16);
+
+const personMatCache = new Map();
+function getPersonMat(color, roughness) {
+  const key = color + "|" + roughness;
+  let m = personMatCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color), roughness, metalness: 0.03,
+    });
+    personMatCache.set(key, m);
+  }
+  return m;
+}
+
+function createPerson(cfg) {
+  const isFemale = cfg.gender === "female";
+  const group = new THREE.Group();
+
+  const pantsMat = getPersonMat(cfg.pantsColor, 0.92);
+  const clothMat = getPersonMat(cfg.clothColor, 0.82);
+  const skinMat = getPersonMat(cfg.skinColor, 0.72);
+  const hairMat = getPersonMat(cfg.hairColor, 0.88);
+
+  const legs = [];
+  const hipY = 0.82;
+  const hipX = isFemale ? 0.082 : 0.092;
+
+  for (const dx of [-hipX, hipX]) {
+    const leg = new THREE.Mesh(GEO_LEG, pantsMat);
+    leg.position.set(dx, hipY, 0);
+    group.add(leg);
+    legs.push(leg);
+  }
+
+  const torsoRadius = isFemale ? 0.152 : 0.185;
+  const torso = new THREE.Mesh(isFemale ? GEO_TORSO_F : GEO_TORSO_M, clothMat);
+  torso.position.y = isFemale ? 1.12 : 1.15;
+  group.add(torso);
+
+  if (isFemale) {
+    const skirt = new THREE.Mesh(GEO_SKIRT, clothMat);
+    skirt.position.y = 0.92;
+    group.add(skirt);
+  }
+
+  const armRadius = 0.058;
+  const shoulderX = torsoRadius + armRadius + 0.006;
+  const shoulderY = isFemale ? 1.28 : 1.31;
+
+  const arms = [];
+  for (const dx of [-shoulderX, shoulderX]) {
+    const arm = new THREE.Mesh(GEO_ARM, clothMat);
+    arm.position.set(dx, shoulderY, 0);
+    group.add(arm);
+    arms.push(arm);
+  }
+
+  const headY = isFemale ? 1.50 : 1.53;
+  const head = new THREE.Mesh(GEO_HEAD, skinMat);
+  head.position.y = headY;
+  group.add(head);
+
+  const hairTop = new THREE.Mesh(GEO_HAIR_SHORT, hairMat);
+  hairTop.position.set(0, headY + 0.022, 0.006);
+  hairTop.scale.set(1.0, isFemale ? 0.80 : 0.74, 1.06);
+  group.add(hairTop);
+
+  if (isFemale) {
+    const hairBack = new THREE.Mesh(GEO_HAIR_LONG, hairMat);
+    hairBack.position.set(0, headY - 0.155, 0.062);
+    group.add(hairBack);
+    for (const dx of [-0.115, 0.115]) {
+      const strand = new THREE.Mesh(GEO_HAIR_LONG, hairMat);
+      strand.position.set(dx, headY - 0.12, 0.03);
+      strand.scale.set(0.62, 0.9, 0.72);
+      group.add(strand);
+    }
+  }
+
+  return { group, legs, arms, isFemale, shoulderX };
+}
+
+function createMotherWithChild(seed) {
+  const rand = s => hashRand(seed, s);
+  const mother = createPerson({
+    gender: "female",
+    clothColor: CROWD_COLORS[Math.floor(rand(1) * CROWD_COLORS.length)],
+    hairColor: HAIR_COLORS[Math.floor(rand(2) * HAIR_COLORS.length)],
+    skinColor: SKIN_COLORS[Math.floor(rand(3) * SKIN_COLORS.length)],
+    pantsColor: PANTS_COLORS[Math.floor(rand(4) * PANTS_COLORS.length)],
+  });
+  const child = createPerson({
+    gender: "female",
+    clothColor: CROWD_COLORS[Math.floor(rand(5) * CROWD_COLORS.length)],
+    hairColor: HAIR_COLORS[Math.floor(rand(6) * HAIR_COLORS.length)],
+    skinColor: SKIN_COLORS[Math.floor(rand(7) * SKIN_COLORS.length)],
+    pantsColor: PANTS_COLORS[Math.floor(rand(8) * PANTS_COLORS.length)],
+  });
+
+  child.group.scale.setScalar(0.72);
+  child.group.position.set(0.66, 0, 0.02);
+  mother.group.add(child.group);
+
+  mother.arms[1].rotation.z = 0.05;
+  child.arms[0].rotation.z = -1.10;
+
+  return {
+    group: mother.group, legs: mother.legs, arms: mother.arms,
+    isFemale: true, shoulderX: mother.shoulderX,
+    hasChild: true, childLegs: child.legs, childArms: child.arms,
+  };
+}
+
+const PEOPLE_DEFS = [
+  { axis: "x", fixed: -4.8, from: -14, to: 14, speed: 1.20, phase: 0.00 },
+  { axis: "x", fixed: -3.8, from: 14, to: -14, speed: 1.00, phase: 0.30 },
+  { axis: "x", fixed: 4.8, from: -14, to: 14, speed: 1.45, phase: 0.55 },
+  { axis: "x", fixed: 3.8, from: 14, to: -14, speed: 1.10, phase: 0.80 },
+  { axis: "x", fixed: -5.2, from: -14, to: 14, speed: 1.30, phase: 0.10 },
+  { axis: "x", fixed: 5.2, from: 14, to: -14, speed: 1.15, phase: 0.42 },
+  { axis: "z", fixed: -4.8, from: -8.5, to: 8.5, speed: 1.10, phase: 0.20 },
+  { axis: "z", fixed: -3.8, from: 8.5, to: -8.5, speed: 1.30, phase: 0.45 },
+  { axis: "z", fixed: 4.8, from: -8.5, to: 8.5, speed: 1.00, phase: 0.70 },
+  { axis: "z", fixed: 3.8, from: 8.5, to: -8.5, speed: 1.40, phase: 0.05 },
+];
+
+const people = [];
+
+for (let i = 0; i < PEOPLE_DEFS.length; i++) {
+  const def = PEOPLE_DEFS[i];
+  const gender = hashRand(i + 1, 11) > 0.5 ? "female" : "male";
+
+  const person = createPerson({
+    gender,
+    clothColor: CROWD_COLORS[Math.floor(hashRand(i+1, 23) * CROWD_COLORS.length)],
+    hairColor: HAIR_COLORS[Math.floor(hashRand(i+1, 37) * HAIR_COLORS.length)],
+    skinColor: SKIN_COLORS[Math.floor(hashRand(i+1, 53) * SKIN_COLORS.length)],
+    pantsColor: PANTS_COLORS[Math.floor(hashRand(i+1, 71) * PANTS_COLORS.length)],
+  });
+
+  const heightScale = gender === "female"
+    ? 0.94 + hashRand(i+1, 89) * 0.05
+    : 0.97 + hashRand(i+1, 97) * 0.06;
+
+  person.group.scale.setScalar(heightScale);
+  world.add(person.group);
+
+  const initProg = hashRand(i+1, 999);
+  const initDir = hashRand(i+1, 888) > 0.5 ? 1 : -1;
+
+  people.push({
+    def, group: person.group,
+    legs: person.legs, arms: person.arms,
+    isFemale: person.isFemale, hasChild: false,
+    progress: initProg,
+    direction: initDir,
+  });
+}
+
+/* 母子组合 */
+const MOTHER_CHILD_DEFS = [
+  { axis: "x", fixed: -5.4, from: -12, to: 12, speed: 0.72, phase: 0.20 },
+  { axis: "x", fixed: 5.4, from: 12, to: -12, speed: 0.68, phase: 0.65 },
+];
+
+for (let i = 0; i < MOTHER_CHILD_DEFS.length; i++) {
+  const def = MOTHER_CHILD_DEFS[i];
+  const mc = createMotherWithChild(900 + i * 37);
+  mc.group.scale.setScalar(0.96 + hashRand(900 + i, 13) * 0.05);
+  world.add(mc.group);
+
+  people.push({
+    def, group: mc.group,
+    legs: mc.legs, arms: mc.arms,
+    isFemale: true, hasChild: true,
+    childLegs: mc.childLegs, childArms: mc.childArms,
+    progress: hashRand(900 + i, 999),
+    direction: hashRand(900 + i, 888) > 0.5 ? 1 : -1,
+  });
+}
+
+/* 逛店人物 */
+const SHOPPER_DEFS = [
+  { axis: "x", fixed: -8.2, from: -13, to: -2, speed: 0.55, phase: 0.15 },
+  { axis: "x", fixed: -8.2, from: 2, to: 13, speed: 0.52, phase: 0.68 },
+  { axis: "x", fixed: 8.2, from: -13, to: -2, speed: 0.58, phase: 0.35 },
+  { axis: "x", fixed: 8.2, from: 2, to: 13, speed: 0.55, phase: 0.82 },
+];
+
+for (let i = 0; i < SHOPPER_DEFS.length; i++) {
+  const def = SHOPPER_DEFS[i];
+  const gender = hashRand(200 + i, 11) > 0.5 ? "female" : "male";
+
+  const person = createPerson({
+    gender,
+    clothColor: CROWD_COLORS[Math.floor(hashRand(200+i, 23) * CROWD_COLORS.length)],
+    hairColor: HAIR_COLORS[Math.floor(hashRand(200+i, 37) * HAIR_COLORS.length)],
+    skinColor: SKIN_COLORS[Math.floor(hashRand(200+i, 53) * SKIN_COLORS.length)],
+    pantsColor: PANTS_COLORS[Math.floor(hashRand(200+i, 71) * PANTS_COLORS.length)],
+  });
+
+  person.group.scale.setScalar(0.96 + hashRand(200+i, 89) * 0.06);
+  world.add(person.group);
+
+  people.push({
+    def, group: person.group,
+    legs: person.legs, arms: person.arms,
+    isFemale: person.isFemale, hasChild: false,
+    progress: hashRand(200+i, 999),
+    direction: hashRand(200+i, 888) > 0.5 ? 1 : -1,
+  });
+}
+
+/* 人物动画 */
+function updatePeople(dt, time) {
+  for (let i = 0; i < people.length; i++) {
+    const p = people[i];
+    const def = p.def;
+
+    const span = def.to - def.from;
+    const pathLen = Math.abs(span);
+    if (pathLen < 0.01) continue;
+
+    const progressRate = def.speed / pathLen;
+    p.progress += p.direction * progressRate * dt;
+
+    /* 边界反弹 */
+    if (p.progress > 1) {
+      p.progress = 2 - p.progress;
+      p.direction = -1;
+    } else if (p.progress < 0) {
+      p.progress = -p.progress;
+      p.direction = 1;
+    }
+
+    const pos = def.from + p.progress * span;
+
+    if (def.axis === "x") {
+      p.group.position.x = pos;
+      p.group.position.z = def.fixed;
+    } else {
+      p.group.position.x = def.fixed;
+      p.group.position.z = pos;
+    }
+
+    p.group.position.y = Math.abs(Math.sin(time * 5.5 + i * 1.7)) * 0.038;
+
+    /* 朝向 */
+    const movingPositive = p.direction * span > 0;
+    if (def.axis === "x") {
+      p.group.rotation.y = movingPositive ? -Math.PI/2 : Math.PI/2;
+    } else {
+      p.group.rotation.y = movingPositive ? Math.PI : 0;
+    }
+
+    /* 肢体动画 */
+    const swing = Math.sin(time * 7 + i * 1.3) * 0.45;
+
+    if (p.legs) {
+      p.legs[0].rotation.x = swing;
+      p.legs[1].rotation.x = -swing;
+    }
+
+    if (p.hasChild) {
+      p.arms[0].rotation.x = swing * 0.34;
+      p.arms[0].rotation.z = 0.08;
+      p.arms[1].rotation.x = 0;
+      p.arms[1].rotation.z = 0.05;
+
+      if (p.childLegs) {
+        p.childLegs[0].rotation.x = -swing * 1.15;
+        p.childLegs[1].rotation.x = swing * 1.15;
+      }
+      if (p.childArms) {
+        p.childArms[0].rotation.x = 0;
+        p.childArms[0].rotation.z = -1.10;
+        p.childArms[1].rotation.x = swing * 0.55;
+        p.childArms[1].rotation.z = 0.08;
+      }
+    } else {
+      const armSwing = swing * (p.isFemale ? 0.62 : 0.85);
+      p.arms[0].rotation.x = armSwing;
+      p.arms[1].rotation.x = -armSwing;
+      const spread = p.isFemale ? 0.10 : 0.08;
+      p.arms[0].rotation.z = -spread;
+      p.arms[1].rotation.z = spread;
+    }
+  }
+}
+
+/* =========================================================
+   13. 摄像头定义
+   ========================================================= */
+const CAMS = [
+  { label: "CAM 01", name: "中庭西侧", pos: [-13, 3.6, 0], yaw: -Math.PI/2, pitch: -0.08 },
+  { label: "CAM 02", name: "中庭东侧", pos: [13, 3.6, 0], yaw: Math.PI/2, pitch: -0.08 },
+  { label: "CAM 03", name: "中庭北侧", pos: [0, 3.6, -8.5], yaw: Math.PI, pitch: -0.12 },
+  { label: "CAM 04", name: "中庭南侧", pos: [0, 3.6, 8.5], yaw: 0, pitch: -0.12 },
+  { label: "CAM 05", name: "中庭全景", pos: [0, 5.2, 0], yaw: -Math.PI/2, pitch: -0.42 },
+  { label: "CAM 06", name: "Apple 展区", pos: [8, 3.8, -6.5], yaw: -0.9, pitch: -0.10 },
+];
+
+const camState = CAMS.map(() => ({
+  pan: 0, tilt: 0,
+  targetPan: 0, targetTilt: 0,
+  delayedPan: 0, delayedTilt: 0,
+  queue: [],
+  zoom: 1.0,
+}));
+
+/* =========================================================
+   14. 主相机
+   ========================================================= */
+const camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.08, 320);
+camera.rotation.order = "YXZ";
+
+function setupCamera(camDef, st, aspect) {
+  camera.position.set(camDef.pos[0], camDef.pos[1], camDef.pos[2]);
+  camera.rotation.order = "YXZ";
+  camera.rotation.x = camDef.pitch + st.tilt;
+  camera.rotation.y = camDef.yaw + st.pan;
+  camera.rotation.z = 0;
+  camera.aspect = aspect;
+  camera.fov = clamp(BASE_FOV / st.zoom, 6, 120);
+  camera.updateProjectionMatrix();
+}
+
+let currentRenderWidth = 0;
+let currentRenderHeight = 0;
+
+function ensureRendererSize(w, h) {
+  if (currentRenderWidth === w && currentRenderHeight === h) return;
+  renderer.setSize(w, h, false);
+  currentRenderWidth = w;
+  currentRenderHeight = h;
+}
+
+/* =========================================================
+   15. DOM 构建
+   ========================================================= */
+const gridEl = document.getElementById("grid");
+const screens = [];
+
+let activeIndex = -1;
+let zoomIndex = -1;
+
+for (let i = 0; i < CAMS.length; i++) {
+  const cam = CAMS[i];
+
+  const cell = document.createElement("div");
+  cell.className = "cell";
+
+  const screen = document.createElement("div");
+  screen.className = "screen";
+
+  const feedCanvas = document.createElement("canvas");
+  feedCanvas.className = "feed";
+  screen.appendChild(feedCanvas);
+
+  const osdTL = document.createElement("div");
+  osdTL.className = "osd osd-tl";
+  osdTL.textContent = cam.label;
+  screen.appendChild(osdTL);
+
+  const osdTR = document.createElement("div");
+  osdTR.className = "osd osd-tr";
+  osdTR.innerHTML = '<span class="recdot"></span>REC';
+  screen.appendChild(osdTR);
+
+  const osdBC = document.createElement("div");
+  osdBC.className = "osd osd-bc";
+  const nameSpan = document.createElement("span");
+  nameSpan.textContent = cam.label + " · " + cam.name;
+  const timeSpan = document.createElement("span");
+  timeSpan.textContent = "----/--/-- --:--:--";
+  osdBC.appendChild(nameSpan);
+  osdBC.appendChild(timeSpan);
+  screen.appendChild(osdBC);
+
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "◉ 已接管 · WASD 转向 · 滚轮变焦";
+  screen.appendChild(hint);
+
+  const consoleCanvas = document.createElement("canvas");
+  consoleCanvas.className = "console-canvas";
+
+  cell.appendChild(screen);
+  cell.appendChild(consoleCanvas);
+  gridEl.appendChild(cell);
+
+  screens.push({
+    cellEl: cell, screenEl: screen,
+    feedCanvas, feedCtx: feedCanvas.getContext("2d"),
+    consoleCanvas, consoleCtx: consoleCanvas.getContext("2d"),
+    timeEl: timeSpan, hintEl: hint,
+  });
+
+  (function (idx) {
+    screen.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      handleScreenClick(idx, ev);
+    });
+  })(i);
+}
+
+/* 尺寸自适应 */
+const robotCamCanvas = document.getElementById("robotCamCanvas");
+const robotCamCtx = robotCamCanvas.getContext("2d");
+const droneCamCanvas = document.getElementById("droneCamCanvas");
+const droneCamCtx = droneCamCanvas.getContext("2d");
+
+function fitCanvas(canvas) {
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width * RENDER_DPR));
+  const h = Math.max(1, Math.round(rect.height * RENDER_DPR));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+}
+
+function fitAllCanvases() {
+  for (let i = 0; i < screens.length; i++) {
+    fitCanvas(screens[i].feedCanvas);
+    fitCanvas(screens[i].consoleCanvas);
+  }
+  fitCanvas(bigCanvas);
+  fitCanvas(robotCamCanvas);
+  fitCanvas(droneCamCanvas);
+}
+
+if (window.ResizeObserver) {
+  const sizeObserver = new ResizeObserver(function (entries) {
+    for (let i = 0; i < entries.length; i++) fitCanvas(entries[i].target);
+  });
+  for (let i = 0; i < screens.length; i++) {
+    sizeObserver.observe(screens[i].feedCanvas);
+    sizeObserver.observe(screens[i].consoleCanvas);
+  }
+  sizeObserver.observe(document.getElementById("bigCanvas"));
+  sizeObserver.observe(robotCamCanvas);
+  sizeObserver.observe(droneCamCanvas);
+} else {
+  window.addEventListener("resize", fitAllCanvases);
+}
+
+/* =========================================================
+   16. DOM 元素引用
+   ========================================================= */
+const overlayEl = document.getElementById("overlay");
+const stageEl = document.getElementById("stage");
+const bigCanvas = document.getElementById("bigCanvas");
+const bigCtx = bigCanvas.getContext("2d");
+const bigTitleEl = document.getElementById("bigTitle");
+const bigNameEl = document.getElementById("bigName");
+const bigClockEl = document.getElementById("bigClock");
+const zoomBadgeEl = document.getElementById("zoomBadge");
+const flashEl = document.getElementById("flash");
+const clockEl = document.getElementById("clock");
+const captureBtn = document.getElementById("captureBtn");
+
+const robotStatusEl = document.getElementById("robotStatus");
+const robotPanelEl = document.getElementById("robotPanel");
+const robotSelectBtn = document.getElementById("robotSelectBtn");
+const robotCamPanelEl = document.getElementById("robotCamPanel");
+const robotCamCloseBtn = document.getElementById("robotCamClose");
+const robotCamClockEl = document.getElementById("robotCamClock");
+const robotZoomValueEl = document.getElementById("robotZoomValue");
+
+const droneStatusEl = document.getElementById("droneStatus");
+const dronePanelEl = document.getElementById("dronePanel");
+const droneSelectBtn = document.getElementById("droneSelectBtn");
+const droneCamPanelEl = document.getElementById("droneCamPanel");
+const droneCamCloseBtn = document.getElementById("droneCamClose");
+const droneCamClockEl = document.getElementById("droneCamClock");
+const droneZoomValueEl = document.getElementById("droneZoomValue");
+const droneAltitudeValEl = document.getElementById("droneAltitudeVal");
+
+/* =========================================================
+   17. 放大视图
+   ========================================================= */
+function computeStageTarget() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const maxW = Math.min(1480, vw * 0.88);
+  const maxH = vh * 0.80;
+  let w = maxW, h = w * 9/16;
+  if (h > maxH) { h = maxH; w = h * 16/9; }
+  return { left: (vw-w)/2, top: (vh-h)/2, width: w, height: h };
+}
+function setStageRect(left, top, width, height) {
+  stageEl.style.left = left + "px";
+  stageEl.style.top = top + "px";
+  stageEl.style.width = width + "px";
+  stageEl.style.height = height + "px";
+}
+function updateBigOSD() {
+  if (zoomIndex < 0) return;
+  const cam = CAMS[zoomIndex];
+  bigTitleEl.textContent = cam.label;
+  bigNameEl.textContent = cam.label + " · " + cam.name;
+  zoomBadgeEl.textContent = "ZOOM ×" + camState[zoomIndex].zoom.toFixed(1);
+}
+function openZoom(index) {
+  const rect = screens[index].screenEl.getBoundingClientRect();
+  zoomIndex = index;
+  updateBigOSD();
+  overlayEl.classList.add("open");
+  stageEl.classList.remove("animating");
+  setStageRect(rect.left, rect.top, rect.width, rect.height);
+  void stageEl.offsetWidth;
+  const target = computeStageTarget();
+  stageEl.classList.add("animating");
+  setStageRect(target.left, target.top, target.width, target.height);
+}
+function closeZoom() {
+  if (zoomIndex < 0) return;
+  const idx = zoomIndex;
+  const rect = screens[idx].screenEl.getBoundingClientRect();
+  stageEl.classList.add("animating");
+  setStageRect(rect.left, rect.top, rect.width, rect.height);
+  overlayEl.classList.remove("open");
+  zoomIndex = -1;
+  window.setTimeout(() => stageEl.classList.remove("animating"), 780);
+}
+function selectScreen(index) {
+  activeIndex = index;
+  updateActiveHighlight();
+  if (zoomIndex < 0) openZoom(index);
+  else { zoomIndex = index; updateBigOSD(); }
+}
+function updateActiveHighlight() {
+  for (let i = 0; i < screens.length; i++) {
+    const on = i === activeIndex;
+    screens[i].screenEl.classList.toggle("active", on);
+    screens[i].cellEl.classList.toggle("active", on);
+  }
+}
+
+/* 机器人 / 无人机接管 */
+function selectRobot() {
+  if (drone.selected) deselectDrone();
+  robot.selected = true;
+  robotStatusEl.classList.add("on");
+  robotPanelEl.classList.add("active");
+  robotSelectBtn.classList.add("on");
+  robotSelectBtn.textContent = "退出机器人";
+  robotCamPanelEl.classList.add("on");
+  activeIndex = -1;
+  updateActiveHighlight();
+  for (let i = 0; i < screens.length; i++) {
+    screens[i].screenEl.classList.add("robot-view");
+    screens[i].hintEl.textContent = "🚗 机器人 · W/S 前后 · A/D 转向";
+  }
+  window.setTimeout(() => fitCanvas(robotCamCanvas), 380);
+}
+function deselectRobot() {
+  if (!robot.selected) return;
+  robot.selected = false;
+  robotStatusEl.classList.remove("on");
+  robotPanelEl.classList.remove("active");
+  robotSelectBtn.classList.remove("on");
+  robotSelectBtn.textContent = "选择机器人";
+  robotCamPanelEl.classList.remove("on");
+  resetRobot();
+  keys.w = keys.s = keys.a = keys.d = false;
+  keys.arrowUp = keys.arrowDown = keys.arrowLeft = keys.arrowRight = false;
+  for (const btn of robotBtns) btn.classList.remove("pressed");
+  for (let i = 0; i < screens.length; i++) {
+    screens[i].screenEl.classList.remove("robot-view");
+    screens[i].hintEl.textContent = "◉ 已接管 · WASD 转向 · 滚轮变焦";
+  }
+}
+function toggleRobot() {
+  if (robot.selected) deselectRobot(); else selectRobot();
+}
+
+function selectDrone() {
+  if (robot.selected) deselectRobot();
+  drone.selected = true;
+  droneStatusEl.classList.add("on");
+  dronePanelEl.classList.add("active");
+  droneSelectBtn.classList.add("on");
+  droneSelectBtn.textContent = "退出无人机";
+  droneCamPanelEl.classList.add("on");
+  activeIndex = -1;
+  updateActiveHighlight();
+  for (let i = 0; i < screens.length; i++) {
+    screens[i].screenEl.classList.add("drone-view");
+    screens[i].hintEl.textContent = "🛸 无人机 · W/S 前后 · Space 上升";
+  }
+  window.setTimeout(() => fitCanvas(droneCamCanvas), 380);
+}
+function deselectDrone() {
+  if (!drone.selected) return;
+  drone.selected = false;
+  droneStatusEl.classList.remove("on");
+  dronePanelEl.classList.remove("active");
+  droneSelectBtn.classList.remove("on");
+  droneSelectBtn.textContent = "选择无人机";
+  droneCamPanelEl.classList.remove("on");
+  resetDrone();
+  keys.w = keys.s = keys.a = keys.d = false;
+  keys.arrowUp = keys.arrowDown = keys.arrowLeft = keys.arrowRight = false;
+  keys.space = keys.shift = false;
+  for (const btn of droneBtns) btn.classList.remove("pressed");
+  for (let i = 0; i < screens.length; i++) {
+    screens[i].screenEl.classList.remove("drone-view");
+    screens[i].hintEl.textContent = "◉ 已接管 · WASD 转向 · 滚轮变焦";
+  }
+}
+function toggleDrone() {
+  if (drone.selected) deselectDrone(); else selectDrone();
+}
+
+robotSelectBtn.addEventListener("click", ev => { ev.stopPropagation(); toggleRobot(); });
+robotCamCloseBtn.addEventListener("click", ev => { ev.stopPropagation(); deselectRobot(); });
+droneSelectBtn.addEventListener("click", ev => { ev.stopPropagation(); toggleDrone(); });
+droneCamCloseBtn.addEventListener("click", ev => { ev.stopPropagation(); deselectDrone(); });
+
+/* 控制面板按钮 */
+const robotBtns = robotPanelEl.querySelectorAll(".rp-btn");
+const droneBtns = dronePanelEl.querySelectorAll(".dp-btn");
+
+function bindPanelButtons(btns, unitSelectedCheck, unitSelect) {
+  for (const btn of btns) {
+    const key = btn.dataset.key;
+    const press = ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      if (!unitSelectedCheck()) unitSelect();
+      keys[key] = true;
+      btn.classList.add("pressed");
+    };
+    const release = ev => {
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      keys[key] = false;
+      btn.classList.remove("pressed");
+    };
+    btn.addEventListener("pointerdown", press);
+    btn.addEventListener("pointerup", release);
+    btn.addEventListener("pointercancel", release);
+    btn.addEventListener("pointerleave", release);
+    btn.addEventListener("contextmenu", ev => ev.preventDefault());
+  }
+}
+
+bindPanelButtons(robotBtns, () => robot.selected, selectRobot);
+bindPanelButtons(droneBtns, () => drone.selected, selectDrone);
+
+document.addEventListener("pointerup", () => {
+  for (const btn of [...robotBtns, ...droneBtns]) {
+    if (btn.classList.contains("pressed")) {
+      keys[btn.dataset.key] = false;
+      btn.classList.remove("pressed");
+    }
+  }
+});
+
+gridEl.addEventListener("click", () => {
+  if (robot.selected) deselectRobot();
+  if (drone.selected) deselectDrone();
+});
+
+/* 屏幕点击 */
+const raycaster = new THREE.Raycaster();
+const ndcVec = new THREE.Vector2();
+
+function handleScreenClick(camIndex, ev) {
+  const canvas = screens[camIndex].feedCanvas;
+  const rect = canvas.getBoundingClientRect();
+  ndcVec.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  ndcVec.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+
+  const camDef = CAMS[camIndex];
+  const st = camState[camIndex];
+  const aspect = rect.width / rect.height;
+
+  const prevPos = camera.position.clone();
+  const prevQuat = camera.quaternion.clone();
+  const prevAspect = camera.aspect;
+  const prevFov = camera.fov;
+
+  setupCamera(camDef, st, aspect);
+  raycaster.setFromCamera(ndcVec, camera);
+
+  const hitsRobot = raycaster.intersectObject(robot.group, true);
+  const hitsDrone = raycaster.intersectObject(drone.group, true);
+
+  camera.position.copy(prevPos);
+  camera.quaternion.copy(prevQuat);
+  camera.aspect = prevAspect;
+  camera.fov = prevFov;
+  camera.updateProjectionMatrix();
+
+  if (hitsDrone.length > 0 && hitsDrone[0].distance < 55) {
+    if (drone.selected) deselectDrone(); else selectDrone();
+    return;
+  }
+  if (hitsRobot.length > 0 && hitsRobot[0].distance < 45) {
+    if (robot.selected) deselectRobot(); else selectRobot();
+    return;
+  }
+
+  if (robot.selected) deselectRobot();
+  if (drone.selected) deselectDrone();
+  selectScreen(camIndex);
+}
+
+overlayEl.addEventListener("click", ev => {
+  if (ev.target === overlayEl) closeZoom();
+});
+
+/* =========================================================
+   18. 键盘
+   ========================================================= */
+const keys = {
+  w: false, a: false, s: false, d: false,
+  arrowUp: false, arrowDown: false, arrowLeft: false, arrowRight: false,
+  space: false, shift: false,
+};
+
+const CODE_MAP = {
+  KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d",
+  ArrowUp: "arrowUp", ArrowDown: "arrowDown",
+  ArrowLeft: "arrowLeft", ArrowRight: "arrowRight",
+};
+
+window.addEventListener("keydown", function (ev) {
+  if (ev.code === "Space") {
+    if (drone.selected) {
+      keys.space = true;
+      ev.preventDefault();
+    }
+    return;
+  }
+
+  if (ev.code === "ShiftLeft" || ev.code === "ShiftRight") {
+    if (drone.selected) {
+      keys.shift = true;
+      ev.preventDefault();
+    }
+    return;
+  }
+
+  const k = CODE_MAP[ev.code];
+  if (k) {
+    keys[k] = true;
+    ev.preventDefault();
+    return;
+  }
+
+  if (ev.code === "Escape") {
+    if (robot.selected) deselectRobot();
+    else if (drone.selected) deselectDrone();
+    else closeZoom();
+    ev.preventDefault();
+    return;
+  }
+
+  if (ev.code === "KeyP") {
+    takeScreenshot();
+    ev.preventDefault();
+    return;
+  }
+
+  if (ev.code === "KeyR") {
+    resetZoom();
+    ev.preventDefault();
+  }
+});
+
+window.addEventListener("keyup", function (ev) {
+  if (ev.code === "Space") {
+    keys.space = false;
+    if (drone.selected) ev.preventDefault();
+    return;
+  }
+  if (ev.code === "ShiftLeft" || ev.code === "ShiftRight") {
+    keys.shift = false;
+    if (drone.selected) ev.preventDefault();
+    return;
+  }
+
+  const k = CODE_MAP[ev.code];
+  if (k) {
+    keys[k] = false;
+    ev.preventDefault();
+  }
+});
+
+window.addEventListener("blur", function () {
+  for (const k in keys) keys[k] = false;
+  for (const btn of [...robotBtns, ...droneBtns]) btn.classList.remove("pressed");
+});
+
+/* =========================================================
+   19. 滚轮变焦
+   ========================================================= */
+window.addEventListener("wheel", function (ev) {
+  if (robot.selected) {
+    ev.preventDefault();
+    const factor = ev.deltaY > 0 ? 0.92 : 1.08;
+    robot.zoom = clamp(robot.zoom * factor, ROBOT_ZOOM_MIN, ROBOT_ZOOM_MAX);
+    if (robotZoomValueEl) robotZoomValueEl.textContent = "×" + robot.zoom.toFixed(1);
+    return;
+  }
+
+  if (drone.selected) {
+    ev.preventDefault();
+    const factor = ev.deltaY > 0 ? 0.92 : 1.08;
+    drone.zoom = clamp(drone.zoom * factor, DRONE_ZOOM_MIN, DRONE_ZOOM_MAX);
+    if (droneZoomValueEl) droneZoomValueEl.textContent = "×" + drone.zoom.toFixed(1);
+    return;
+  }
+
+  if (zoomIndex < 0) return;
+  ev.preventDefault();
+  const st = camState[zoomIndex];
+  const factor = ev.deltaY > 0 ? 0.90 : 1.11;
+  st.zoom = clamp(st.zoom * factor, ZOOM_MIN, ZOOM_MAX);
+  zoomBadgeEl.textContent = "ZOOM ×" + st.zoom.toFixed(1);
+}, { passive: false });
+
+function resetZoom() {
+  if (robot.selected) {
+    robot.zoom = 1.0;
+    if (robotZoomValueEl) robotZoomValueEl.textContent = "×1.0";
+    return;
+  }
+  if (drone.selected) {
+    drone.zoom = 1.0;
+    if (droneZoomValueEl) droneZoomValueEl.textContent = "×1.0";
+    return;
+  }
+  if (zoomIndex < 0) return;
+  camState[zoomIndex].zoom = 1.0;
+  zoomBadgeEl.textContent = "ZOOM ×1.0";
+}
+
+/* =========================================================
+   20. 截图
+   ========================================================= */
+function flashScreen() {
+  flashEl.classList.add("on");
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    flashEl.classList.remove("on");
+  }));
+}
+
+function takeScreenshot() {
+  let srcCanvas = null, label = "", color = "#d9fff0", subColor = "#ff5252";
+
+  if (robot.selected && robotCamCanvas.width > 0) {
+    srcCanvas = robotCamCanvas;
+    label = "ROBOT CAM · 巡逻机器人";
+    color = "#ffe0b2";
+    subColor = "#ffb347";
+  } else if (drone.selected && droneCamCanvas.width > 0) {
+    srcCanvas = droneCamCanvas;
+    label = "DRONE CAM · 巡逻无人机";
+    color = "#d0f0ff";
+    subColor = "#6cd0ff";
+  } else {
+    const idx = zoomIndex >= 0 ? zoomIndex : activeIndex;
+    if (idx < 0) { flashScreen(); return; }
+    srcCanvas = zoomIndex >= 0 ? bigCanvas : screens[idx].feedCanvas;
+    label = CAMS[idx].label + " · " + CAMS[idx].name;
+  }
+
+  if (!srcCanvas || !srcCanvas.width || !srcCanvas.height) { flashScreen(); return; }
+
+  const out = document.createElement("canvas");
+  out.width = srcCanvas.width;
+  out.height = srcCanvas.height;
+  const c = out.getContext("2d");
+  c.drawImage(srcCanvas, 0, 0);
+
+  const W = out.width, H = out.height;
+  const fs = Math.max(12, Math.round(H * 0.032));
+  const barH = fs * 2.6;
+  const grad = c.createLinearGradient(0, H - barH, 0, H);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(1, "rgba(0,0,0,0.86)");
+  c.fillStyle = grad;
+  c.fillRect(0, H - barH, W, barH);
+
+  c.fillStyle = color;
+  c.font = fs + 'px "SF Mono", Consolas, monospace';
+  c.textAlign = "left";
+  c.textBaseline = "middle";
+  c.fillText(label, fs, H - fs * 1.3);
+
+  c.textAlign = "right";
+  c.fillText(currentStamp(), W - fs, H - fs * 1.3);
+
+  c.textAlign = "left";
+  c.fillStyle = subColor;
+  c.beginPath();
+  c.arc(fs * 1.3, fs * 1.4, fs * 0.36, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = color;
+  c.fillText("LIVE", fs * 2.0, fs * 1.4);
+
+  const stamp = currentDateString().replace(/-/g, "") + "_" + currentTimeString().replace(/:/g, "");
+  const a = document.createElement("a");
+  a.download = "CCTV_" + label.replace(/[\s·]+/g, "") + "_" + stamp + ".png";
+  a.href = out.toDataURL("image/png");
+  a.click();
+
+  flashScreen();
+}
+
+captureBtn.addEventListener("click", ev => { ev.stopPropagation(); takeScreenshot(); });
+
+/* =========================================================
+   21. 摄像头输入
+   ========================================================= */
+const TILT_LIMIT = 0.85;
+const ROT_SPEED = 1.20;
+
+function updateCameraInput(dt) {
+  const idx = activeIndex;
+  if (idx < 0) return;
+  const st = camState[idx];
+  const step = ROT_SPEED * dt;
+  let changed = false;
+  if (keys.a || keys.arrowLeft) { st.targetPan += step; changed = true; }
+  if (keys.d || keys.arrowRight) { st.targetPan -= step; changed = true; }
+  if (keys.w || keys.arrowUp) { st.targetTilt += step; changed = true; }
+  if (keys.s || keys.arrowDown) { st.targetTilt -= step; changed = true; }
+  if (changed) {
+    st.targetTilt = clamp(st.targetTilt, -TILT_LIMIT, TILT_LIMIT);
+    while (st.targetPan > Math.PI) st.targetPan -= Math.PI * 2;
+    while (st.targetPan < -Math.PI) st.targetPan += Math.PI * 2;
+  }
+}
+
+function updateCameras(now, dt) {
+  const follow = 1 - Math.exp(-dt * 8.5);
+  for (let i = 0; i < camState.length; i++) {
+    const st = camState[i];
+    const q = st.queue;
+    const last = q.length ? q[q.length - 1] : null;
+    if (!last || last.pan !== st.targetPan || last.tilt !== st.targetTilt) {
+      q.push({ t: now, pan: st.targetPan, tilt: st.targetTilt });
+    }
+    while (q.length && q[0].t <= now - DELAY_MS) {
+      const cmd = q.shift();
+      st.delayedPan = cmd.pan;
+      st.delayedTilt = cmd.tilt;
+    }
+    let panDiff = st.delayedPan - st.pan;
+    while (panDiff > Math.PI) panDiff -= Math.PI * 2;
+    while (panDiff < -Math.PI) panDiff += Math.PI * 2;
+    st.pan += panDiff * follow;
+    st.tilt += (st.delayedTilt - st.tilt) * follow;
+    while (st.pan > Math.PI) st.pan -= Math.PI * 2;
+    while (st.pan < -Math.PI) st.pan += Math.PI * 2;
+  }
+}
+
+/* =========================================================
+   22. 渲染循环
+   ========================================================= */
+const FEED_INTERVAL = 1000 / 18;
+const CONSOLE_INTERVAL = 1000 / 10;
+
+let lastFrameTime = performance.now();
+let lastFeedTime = 0;
+let lastConsoleTime = 0;
+
+function renderFeeds() {
+  for (let i = 0; i < screens.length; i++) {
+    const s = screens[i];
+    const st = camState[i];
+    const camDef = CAMS[i];
+    const w = s.feedCanvas.width, h = s.feedCanvas.height;
+    if (w < 2 || h < 2) continue;
+    ensureRendererSize(w, h);
+    setupCamera(camDef, st, w / h);
+    renderer.render(scene, camera);
+    s.feedCtx.drawImage(renderer.domElement, 0, 0);
+  }
+}
+
+function renderBig() {
+  if (zoomIndex < 0) return;
+  const w = bigCanvas.width, h = bigCanvas.height;
+  if (w < 2 || h < 2) return;
+  ensureRendererSize(w, h);
+  setupCamera(CAMS[zoomIndex], camState[zoomIndex], w / h);
+  renderer.render(scene, camera);
+  bigCtx.drawImage(renderer.domElement, 0, 0);
+}
+
+/* 从云台组提取世界矩阵，前移相机避免被自身几何遮挡 */
+const _povPos = new THREE.Vector3();
+const _povQuat = new THREE.Quaternion();
+const _povScale = new THREE.Vector3();
+const _povForward = new THREE.Vector3();
+const _flipY180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+
+function setupPovCamera(unit, baseFov, aspect) {
+  unit.group.updateMatrixWorld(true);
+  unit.camGroup.matrixWorld.decompose(_povPos, _povQuat, _povScale);
+
+  _povForward.set(0, 0, 1).applyQuaternion(_povQuat);
+  _povPos.addScaledVector(_povForward, POV_CAM_FORWARD);
+
+  _povQuat.multiply(_flipY180);
+
+  camera.position.copy(_povPos);
+  camera.quaternion.copy(_povQuat);
+  camera.fov = clamp(baseFov / unit.zoom, 12, 110);
+  camera.aspect = aspect;
+  camera.updateProjectionMatrix();
+}
+
+function renderRobotCam() {
+  if (!robot.selected) return;
+  const w = robotCamCanvas.width, h = robotCamCanvas.height;
+  if (w < 2 || h < 2) return;
+  ensureRendererSize(w, h);
+  setupPovCamera(robot, ROBOT_BASE_FOV, w / h);
+  renderer.render(scene, camera);
+  robotCamCtx.drawImage(renderer.domElement, 0, 0);
+}
+
+function renderDroneCam() {
+  if (!drone.selected) return;
+  const w = droneCamCanvas.width, h = droneCamCanvas.height;
+  if (w < 2 || h < 2) return;
+  ensureRendererSize(w, h);
+  setupPovCamera(drone, DRONE_BASE_FOV, w / h);
+  renderer.render(scene, camera);
+  droneCamCtx.drawImage(renderer.domElement, 0, 0);
+  if (droneAltitudeValEl) droneAltitudeValEl.textContent = drone.y.toFixed(1);
+}
+
+function renderConsoles(timeSeconds) {
+  for (let i = 0; i < screens.length; i++) {
+    const s = screens[i];
+    const W = s.consoleCanvas.width, H = s.consoleCanvas.height;
+    if (!W || !H) continue;
+    drawConsolePanel(s.consoleCtx, W, H, i, timeSeconds);
+  }
+}
+
+function loop(now) {
+  window.requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+  const timeSeconds = now / 1000;
+
+  if (!robot.selected && !drone.selected) updateCameraInput(dt);
+
+  updateCameras(now, dt);
+  updateRobot(dt, timeSeconds);
+  updateDrone(dt, timeSeconds);
+  updatePeople(dt, timeSeconds);
+  updateFountain(dt, timeSeconds);
+  updateEscalators(dt);
+
+  if (now - lastFeedTime >= FEED_INTERVAL) {
+    lastFeedTime = now;
+    renderFeeds();
+    renderBig();
+    if (robot.selected) renderRobotCam();
+    if (drone.selected) renderDroneCam();
+  }
+
+  if (now - lastConsoleTime >= CONSOLE_INTERVAL) {
+    lastConsoleTime = now;
+    renderConsoles(timeSeconds);
+  }
+}
+
+/* =========================================================
+   23. 控制台面板绘制
+   ========================================================= */
+function drawKnob(ctx, x, y, r, angle, color) {
+  ctx.beginPath();
+  ctx.arc(x, y + r*0.14, r, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  ctx.fill();
+
+  const grad = ctx.createRadialGradient(x - r*0.34, y - r*0.34, r*0.08, x, y, r);
+  grad.addColorStop(0, "#67757f");
+  grad.addColorStop(0.55, "#39434c");
+  grad.addColorStop(1, "#161b21");
+
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.65)";
+  ctx.lineWidth = Math.max(1, r*0.13);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -r*0.76);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1.4, r*0.2);
+  ctx.lineCap = "round";
+  ctx.shadowColor = color;
+  ctx.shadowBlur = r*0.9;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(x, y, r*0.17, 0, Math.PI*2);
+  ctx.fillStyle = "#0a0d11";
+  ctx.fill();
+}
+
+function drawConsolePanel(ctx, W, H, index, now) {
+  const st = camState[index];
+  const cam = CAMS[index];
+  const isActive = index === activeIndex;
+  ctx.clearRect(0, 0, W, H);
+
+  const topY = H * 0.09;
+  const midY = H * 0.42;
+  const botY = H * 0.93;
+  const topW = W * 0.70, botW = W * 0.88;
+  const TL = (W - topW)/2, TR = (W + topW)/2;
+  const L = (W - botW)/2, R = (W + botW)/2;
+
+  function topPointX(ratio, y) {
+    const k = (y - topY) / (midY - topY);
+    const w = lerp(topW, botW, k);
+    return (W - w)/2 + w * ratio;
+  }
+  function px(u) { return L + (R - L) * u; }
+  function py(u) { return midY + (botY - midY) * u; }
+
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  ctx.ellipse(W/2, botY + H*0.03, botW*0.52, H*0.07, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  const topGrad = ctx.createLinearGradient(0, topY, 0, midY);
+  topGrad.addColorStop(0, "#404c59");
+  topGrad.addColorStop(0.55, "#2c353f");
+  topGrad.addColorStop(1, "#1f262e");
+
+  ctx.beginPath();
+  ctx.moveTo(TL, topY);
+  ctx.lineTo(TR, topY);
+  ctx.lineTo(R, midY);
+  ctx.lineTo(L, midY);
+  ctx.closePath();
+  ctx.fillStyle = topGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(140, 180, 205, 0.26)";
+  ctx.lineWidth = Math.max(1, W/520);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(TL, topY);
+  ctx.lineTo(TR, topY);
+  ctx.strokeStyle = "rgba(190, 225, 245, 0.5)";
+  ctx.lineWidth = Math.max(1, W/640);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(0,0,0,0.32)";
+  ctx.lineWidth = Math.max(1, H*0.017);
+  for (let i = 1; i <= 3; i++) {
+    const yy = lerp(topY, midY, 0.14 + i*0.06);
+    const k = (yy - topY) / (midY - topY);
+    const w = lerp(topW, botW, k) * 0.86;
+    const left = (W - w)/2;
+    ctx.beginPath();
+    ctx.moveTo(left, yy);
+    ctx.lineTo(left + w, yy);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const knobY = lerp(topY, midY, 0.62);
+  const knobR = Math.min(H*0.115, W*0.030);
+  const knobRatio = [0.24, 0.50, 0.76];
+  const knobAngle = [st.pan*1.5, st.tilt*2.2, (st.pan - st.tilt)*0.9];
+  const knobColor = [isActive ? "#4ee6a8" : "#2f8f6c", "#ffb347", "#59c8ff"];
+
+  for (let i = 0; i < 3; i++) {
+    drawKnob(ctx, topPointX(knobRatio[i], knobY), knobY, knobR, knobAngle[i], knobColor[i]);
+  }
+
+  const panelGrad = ctx.createLinearGradient(0, midY, 0, botY);
+  panelGrad.addColorStop(0, "#2a333d");
+  panelGrad.addColorStop(0.35, "#1a212a");
+  panelGrad.addColorStop(1, "#0a0e13");
+
+  ctx.beginPath();
+  ctx.moveTo(L, midY);
+  ctx.lineTo(R, midY);
+  ctx.lineTo(R, botY);
+  ctx.lineTo(L, botY);
+  ctx.closePath();
+  ctx.fillStyle = panelGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(120, 160, 190, 0.22)";
+  ctx.lineWidth = Math.max(1, W/560);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(L, midY);
+  ctx.lineTo(R, midY);
+  ctx.strokeStyle = isActive ? "rgba(78, 230, 168, 0.75)" : "rgba(170, 205, 230, 0.4)";
+  ctx.lineWidth = Math.max(1, W/480);
+  ctx.stroke();
+
+  const tagL = px(0.045), tagR = px(0.245);
+  const tagT = py(0.20), tagB = py(0.80);
+
+  roundRectPath(ctx, tagL, tagT, tagR - tagL, tagB - tagT, (tagB - tagT)*0.16);
+  ctx.fillStyle = "#04070a";
+  ctx.fill();
+  ctx.strokeStyle = isActive ? "rgba(78, 230, 168, 0.6)" : "rgba(90, 130, 150, 0.35)";
+  ctx.lineWidth = Math.max(1, W/620);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.fillStyle = isActive ? "#4ee6a8" : "#2e7a5e";
+  ctx.font = "600 " + Math.round((tagB - tagT)*0.52) + 'px "SF Mono", Consolas, monospace';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  if (isActive) { ctx.shadowColor = "#4ee6a8"; ctx.shadowBlur = 12; }
+  ctx.fillText(cam.label, (tagL + tagR)/2, (tagT + tagB)/2);
+  ctx.restore();
+
+  const ledColors = ["#ff4d4d", "#4de1ff", "#ffd166"];
+  const ledR = Math.min(H*0.085, W*0.0075);
+  for (let i = 0; i < 3; i++) {
+    const lx = px(0.305 + i*0.055);
+    const ly = py(0.50);
+    const on = Math.sin(now * (2.1 + i*0.7) + index*1.3) > -0.25;
+    if (on) {
+      const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, ledR*3.6);
+      glow.addColorStop(0, ledColors[i] + "cc");
+      glow.addColorStop(0.55, ledColors[i] + "44");
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(lx, ly, ledR*3.6, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(lx, ly, ledR, 0, Math.PI*2);
+    ctx.fillStyle = on ? ledColors[i] : "#161c23";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.7)";
+    ctx.lineWidth = Math.max(1, ledR*0.28);
+    ctx.stroke();
+  }
+
+  const btnColors = [
+    { hi: "#ff8a8a", base: "#e04545", dark: "#7a1c1c" },
+    { hi: "#ffe08a", base: "#e0b13a", dark: "#7a5c10" },
+    { hi: "#8affc9", base: "#35c48a", dark: "#126b48" },
+    { hi: "#8ac4ff", base: "#3a86e0", dark: "#123f7a" },
+  ];
+  const btnAreaL = px(0.44), btnAreaR = px(0.755);
+  const btnSlotW = (btnAreaR - btnAreaL) / 4;
+  const btnW = btnSlotW * 0.66;
+  const btnT = py(0.24), btnB = py(0.76);
+  const btnH = btnB - btnT;
+
+  for (let i = 0; i < 4; i++) {
+    const bxx = btnAreaL + i*btnSlotW + (btnSlotW - btnW)/2;
+    const by = btnT;
+
+    roundRectPath(ctx, bxx - btnW*0.06, by - btnH*0.06, btnW*1.12, btnH*1.12, btnH*0.22);
+    ctx.fillStyle = "#05080b";
+    ctx.fill();
+
+    const lit = (i === 0 && isActive) ||
+      (i === 1 && Math.sin(now*2.4 + index) > 0.4) ||
+      (i === 2 && index % 2 === 0) ||
+      (i === 3 && isActive && Math.sin(now*4) > 0);
+
+    const col = btnColors[i];
+    const bGrad = ctx.createLinearGradient(bxx, by, bxx, by + btnH);
+    if (lit) {
+      bGrad.addColorStop(0, col.hi);
+      bGrad.addColorStop(0.55, col.base);
+      bGrad.addColorStop(1, col.dark);
+    } else {
+      bGrad.addColorStop(0, "#2c343d");
+      bGrad.addColorStop(0.55, "#1b222a");
+      bGrad.addColorStop(1, "#0e1319");
+    }
+
+    roundRectPath(ctx, bxx, by, btnW, btnH, btnH*0.24);
+    ctx.fillStyle = bGrad;
+    ctx.fill();
+
+    if (lit) {
+      ctx.save();
+      ctx.shadowColor = col.base;
+      ctx.shadowBlur = btnH*0.7;
+      ctx.strokeStyle = col.base;
+      ctx.lineWidth = Math.max(1, btnH*0.08);
+      roundRectPath(ctx, bxx, by, btnW, btnH, btnH*0.24);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(bxx + btnW*0.16, by + btnH*0.2);
+    ctx.lineTo(bxx + btnW*0.84, by + btnH*0.2);
+    ctx.strokeStyle = lit ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.10)";
+    ctx.lineWidth = Math.max(1, btnH*0.10);
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+
+  const fxC = px(0.865);
+  const fTop = py(0.18), fBot = py(0.84);
+  const railW = Math.max(2, W*0.0065);
+
+  roundRectPath(ctx, fxC - railW/2, fTop, railW, fBot - fTop, railW/2);
+  ctx.fillStyle = "#04070a";
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(fxC, fTop + railW);
+  ctx.lineTo(fxC, fBot - railW);
+  ctx.strokeStyle = "rgba(78, 230, 168, 0.22)";
+  ctx.lineWidth = Math.max(1, railW*0.35);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(120, 160, 180, 0.3)";
+  ctx.lineWidth = Math.max(1, W*0.0018);
+  for (let i = 0; i <= 4; i++) {
+    const ty = lerp(fTop, fBot, i/4);
+    ctx.beginPath();
+    ctx.moveTo(fxC + railW*1.2, ty);
+    ctx.lineTo(fxC + railW*2.6, ty);
+    ctx.stroke();
+  }
+
+  const panK = clamp((st.pan + Math.PI) / (Math.PI*2), 0, 1);
+  const slideY = lerp(fBot - railW*1.6, fTop + railW*1.6, panK);
+  const slideW = W*0.026, slideH = H*0.17;
+
+  const sGrad = ctx.createLinearGradient(fxC - slideW/2, 0, fxC + slideW/2, 0);
+  sGrad.addColorStop(0, "#59646e");
+  sGrad.addColorStop(0.45, "#c3ced8");
+  sGrad.addColorStop(0.55, "#aab6c0");
+  sGrad.addColorStop(1, "#3f4952");
+
+  roundRectPath(ctx, fxC - slideW/2, slideY - slideH/2, slideW, slideH, slideW*0.22);
+  ctx.fillStyle = sGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.7)";
+  ctx.lineWidth = Math.max(1, slideW*0.06);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(fxC - slideW*0.30, slideY);
+  ctx.lineTo(fxC + slideW*0.30, slideY);
+  ctx.strokeStyle = isActive ? "#4ee6a8" : "rgba(78, 230, 168, 0.35)";
+  ctx.lineWidth = Math.max(1, slideH*0.09);
+  ctx.stroke();
+}
+
+/* =========================================================
+   24. 时钟
+   ========================================================= */
+function updateClock() {
+  const stamp = currentStamp();
+  clockEl.textContent = stamp;
+  for (let i = 0; i < screens.length; i++) screens[i].timeEl.textContent = stamp;
+  bigClockEl.textContent = stamp;
+  robotCamClockEl.textContent = stamp;
+  droneCamClockEl.textContent = stamp;
+}
+window.setInterval(updateClock, 200);
+
+window.addEventListener("resize", function () {
+  fitAllCanvases();
+  if (zoomIndex >= 0) {
+    const target = computeStageTarget();
+    stageEl.classList.remove("animating");
+    setStageRect(target.left, target.top, target.width, target.height);
+  }
+});
+
+/* =========================================================
+   25. 启动
+   ========================================================= */
+fitAllCanvases();
+updateClock();
+updateActiveHighlight();
+
+window.requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
